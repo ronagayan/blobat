@@ -25,7 +25,6 @@ const DAMAGE_MULTIPLIER  = 0.04;    // ball speed × this = hp damage
 const RESTITUTION        = 0.8;
 const BALL_FRICTION      = 0.985;
 const MAX_BALL_SPEED     = 1000;
-const ENEMY_MAX_COUNT    = 5;
 const ENEMY_MAX_HP       = 100;
 const ENEMY_SPEED        = 160;
 const ENEMY_DODGE_SPEED  = 200;
@@ -34,6 +33,9 @@ const ENEMY_BAT_WIDTH    = 14;
 const TRN_WALL           = 40;
 const TRN_MAX_SPEED      = 800;    // ball speed = 100% momentum
 const TRN_DEBUG          = false;
+const GOALS_TO_WIN         = 5;
+const GOAL_FREEZE_DURATION = 1.0;   // seconds
+const ENEMY_COUNT          = 3;
 
 // ── Input ────────────────────────────────────────
 const keys  = {};
