@@ -356,7 +356,7 @@ function applyBallDamage(entity) {
   // Trigger game over for player when hp bottoms out
   if (entity === player && entity.hp < 0.5) {
     entity.hp = 0;
-    gameState = 'won'; winner = 'RED';
+    // player death handled by Task 8 (respawn)
   }
 
   // Trigger splat for dead enemies
