@@ -148,6 +148,8 @@ function tryRoll() {
 let TRN_L = TRN_WALL, TRN_R = WW - TRN_WALL;
 let TRN_T = TRN_WALL, TRN_B = WH - TRN_WALL;
 let TRN_RECTS = [];
+let GATE_LEFT  = null;
+let GATE_RIGHT = null;
 
 function calcTrainingBounds() {
   TRN_L = TRN_WALL;
@@ -171,15 +173,14 @@ function calcTrainingBounds() {
     { x: TRN_R - 150, y: TRN_T + 60, w: 90, h: 50 },
     { x: TRN_L + 60, y: TRN_B - 110, w: 90, h: 50 },
     { x: TRN_R - 150, y: TRN_B - 110, w: 90, h: 50 },
-    // Side walls
-    { x: TRN_L + 50, y: cy - 90, w: 35, h: 180 },
-    { x: TRN_R - 85, y: cy - 90, w: 35, h: 180 },
     // Top/bottom barriers
     { x: cx - hw * 0.55, y: TRN_T + 50, w: 50, h: 90 },
     { x: cx + hw * 0.55 - 50, y: TRN_T + 50, w: 50, h: 90 },
     { x: cx - hw * 0.55, y: TRN_B - 140, w: 50, h: 90 },
     { x: cx + hw * 0.55 - 50, y: TRN_B - 140, w: 50, h: 90 },
   ];
+  GATE_LEFT  = { x: TRN_L + 50,  y: cy - 90, w: 35, h: 180 };
+  GATE_RIGHT = { x: TRN_R - 85, y: cy - 90, w: 35, h: 180 };
 }
 
 // ── Camera (fixed center — no tracking needed) ───
