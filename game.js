@@ -1248,21 +1248,6 @@ function drawTrainingHUD() {
   ctx.fillText('↺ RESTART', 65, 40);
   ctx.restore();
 
-  // +ENEMY button
-  const atMax = trnEnemies.length >= ENEMY_MAX_COUNT;
-  ctx.save();
-  ctx.globalAlpha = atMax ? 0.4 : 1;
-  ctx.globalAlpha *= 0.2; ctx.fillStyle = 'rgba(0,0,0,0.4)';
-  ctx.beginPath(); ctx.roundRect(127, 23, 90, 30, 10); ctx.fill();
-  ctx.globalAlpha = atMax ? 0.4 : 1;
-  ctx.fillStyle = 'rgba(40,40,80,0.6)';
-  ctx.beginPath(); ctx.roundRect(125, 20, 90, 30, 10); ctx.fill();
-  ctx.strokeStyle = 'rgba(121,134,203,0.4)'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.roundRect(125, 20, 90, 30, 10); ctx.stroke();
-  ctx.fillStyle = '#9FA8DA'; ctx.font = 'bold 13px Segoe UI,sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('+ ENEMY', 170, 40);
-  ctx.restore();
-
   // ── Scoreboard ──
   {
     const boxW = 120, boxH = 70, sep = 24;
@@ -1428,19 +1413,22 @@ function drawTrainingHUD() {
     ctx.restore();
   }
 
-  // ── YOU LOST overlay (new) ──
+  // ── WIN overlay ──
   if (gameState === 'won') {
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.65)';
     ctx.fillRect(0, 0, WW, WH);
 
+    const winColor = winner === 'BLUE' ? '#3498DB' : '#E74C3C';
+    const winText  = winner === 'BLUE' ? 'BLUE WINS!' : 'RED WINS!';
     ctx.font = 'bold 96px Segoe UI,sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#E74C3C';
-    ctx.shadowColor = 'rgba(231,76,60,0.6)'; ctx.shadowBlur = 40;
-    ctx.fillText('YOU LOST', WW / 2, WH / 2 - 30);
+    ctx.fillStyle = winColor;
+    ctx.shadowColor = winColor; ctx.shadowBlur = 40;
+    ctx.fillText(winText, WW / 2, WH / 2 - 30);
     ctx.shadowBlur = 0;
 
+    // PLAY AGAIN button (reuses RESTART_BTN rect)
     const { x: bx, y: by, w: bw, h: bh } = RESTART_BTN;
     const rGrad = ctx.createLinearGradient(bx, by, bx, by + bh);
     rGrad.addColorStop(0, CLAY.coverHi); rGrad.addColorStop(1, CLAY.cover);
@@ -1452,7 +1440,7 @@ function drawTrainingHUD() {
     ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, bh / 2); ctx.stroke();
     ctx.shadowBlur = 0;
     ctx.fillStyle = '#fff'; ctx.font = 'bold 20px Segoe UI,sans-serif';
-    ctx.fillText('↺  RESTART', bx + bw / 2, by + bh / 2 + 7);
+    ctx.fillText('▶  PLAY AGAIN', bx + bw / 2, by + bh / 2 + 7);
 
     ctx.restore();
   }
