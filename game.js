@@ -913,6 +913,10 @@ function _updatePlayer(dt) {
 
 // ── Enemy AI + ball damage ───────────────────────
 function _updateEnemies(dt) {
+  // Possession heuristic (hysteresis: only change when |vx| > 80)
+  if      (trainingBall.vx < -80) redPossession = true;
+  else if (trainingBall.vx >  80) redPossession = false;
+
   // ── Ball damage ──
   applyBallDamage(player);
   for (const enemy of trnEnemies) {
@@ -987,30 +991,67 @@ function _updateEnemies(dt) {
       enemy.vx = perpX * side * ENEMY_DODGE_SPEED;
       enemy.vy = perpY * side * ENEMY_DODGE_SPEED;
     } else {
+      const idx = trnEnemies.indexOf(enemy);
       const edx = trainingBall.x - enemy.x, edy = trainingBall.y - enemy.y;
-      const ed = Math.hypot(edx, edy);
-      if (ed < 150 && enemy.swingCooldown <= 0 && !enemy.hitThisSwing) {
-        // SWING_INIT
-        const toBall   = Math.atan2(trainingBall.y - enemy.y, trainingBall.x - enemy.x);
-        const toPlayer = Math.atan2(player.y - enemy.y, player.x - enemy.x);
-        const cwMid   = toBall + Math.PI * (1 / 3);
-        const ccwMid  = toBall - Math.PI * (1 / 3);
-        const cwDiff  = normalizeAngle(toPlayer - cwMid);
-        const ccwDiff = normalizeAngle(toPlayer - ccwMid);
-        enemy.swingDir = Math.abs(cwDiff) < Math.abs(ccwDiff) ? 1 : -1;
-        enemy.swingStartAngle = toBall;
-        enemy.swingProgress = 0;
-        enemy.hitThisSwing = false;
-        enemy.vx = 0; enemy.vy = 0;
-        const seg0 = _getEnemyBatSegment(enemy, toBall);
-        enemy.prevBatBase = { x: seg0.bx, y: seg0.by };
-        enemy.prevBatTip  = { x: seg0.tx, y: seg0.ty };
+      const ed  = Math.hypot(edx, edy);
+      const mapCY = (TRN_T + TRN_B) / 2;
+
+      if (redPossession) {
+        // RED attacking — aim at GATE_LEFT
+        if (idx === 0) {
+          // Attacker: chase ball; swing aims toward GATE_LEFT
+          if (ed < 150 && enemy.swingCooldown <= 0 && !enemy.hitThisSwing) {
+            // SWING_INIT — aim toward GATE_LEFT
+            enemy.swingStartAngle = Math.atan2(
+              GATE_LEFT.y + GATE_LEFT.h / 2 - enemy.y,
+              GATE_LEFT.x + GATE_LEFT.w / 2 - enemy.x
+            );
+            const toPlayer = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+            const cwMid  = enemy.swingStartAngle + Math.PI * (1 / 3);
+            const ccwMid = enemy.swingStartAngle - Math.PI * (1 / 3);
+            enemy.swingDir = Math.abs(Math.atan2(Math.sin(toPlayer - cwMid), Math.cos(toPlayer - cwMid))) <
+                             Math.abs(Math.atan2(Math.sin(toPlayer - ccwMid), Math.cos(toPlayer - ccwMid))) ? 1 : -1;
+            enemy.swingProgress = 0;
+            enemy.hitThisSwing  = false;
+            enemy.vx = 0; enemy.vy = 0;
+            const seg0 = _getEnemyBatSegment(enemy, enemy.swingStartAngle);
+            enemy.prevBatBase = { x: seg0.bx, y: seg0.by };
+            enemy.prevBatTip  = { x: seg0.tx, y: seg0.ty };
+          } else if (ed > 0.1) {
+            // CHASE ball
+            enemy.vx = (edx / ed) * ENEMY_SPEED;
+            enemy.vy = (edy / ed) * ENEMY_SPEED;
+            enemy.angle = Math.atan2(edy, edx);
+          }
+        } else {
+          // Support: move to flanking positions
+          const supportY = idx === 1 ? mapCY - 120 : mapCY + 120;
+          const tx = WW * 0.6, ty = supportY;
+          const dx = tx - enemy.x, dy = ty - enemy.y;
+          const d  = Math.hypot(dx, dy);
+          if (d > 10) { enemy.vx = (dx / d) * ENEMY_SPEED; enemy.vy = (dy / d) * ENEMY_SPEED; }
+          else        { enemy.vx = 0; enemy.vy = 0; }
+        }
       } else {
-        // CHASE
-        if (ed > 0.1) {
-          enemy.vx = (edx / ed) * ENEMY_SPEED;
-          enemy.vy = (edy / ed) * ENEMY_SPEED;
-          enemy.angle = Math.atan2(edy, edx);
+        // BLUE attacking — RED defending GATE_RIGHT
+        if (idx === 0) {
+          // Goalkeeper: stay between ball and GATE_RIGHT
+          const gateCx = GATE_RIGHT.x + GATE_RIGHT.w / 2;
+          const gateCy = GATE_RIGHT.y + GATE_RIGHT.h / 2;
+          const targetX = clamp(trainingBall.x * 0.3 + gateCx * 0.7, TRN_R - 200, TRN_R - 120);
+          const targetY = clamp(trainingBall.y, GATE_RIGHT.y - 60, GATE_RIGHT.y + GATE_RIGHT.h + 60);
+          const dx = targetX - enemy.x, dy = targetY - enemy.y;
+          const d  = Math.hypot(dx, dy);
+          if (d > 10) { enemy.vx = (dx / d) * ENEMY_SPEED; enemy.vy = (dy / d) * ENEMY_SPEED; }
+          else        { enemy.vx = 0; enemy.vy = 0; }
+        } else {
+          // Interceptors: steer toward predicted ball position
+          const ix = clamp(trainingBall.x + trainingBall.vx * 0.3, TRN_L + 40, TRN_R - 40);
+          const iy = clamp(trainingBall.y + trainingBall.vy * 0.3, TRN_T + 40, TRN_B - 40);
+          const dx = ix - enemy.x, dy = iy - enemy.y;
+          const d  = Math.hypot(dx, dy);
+          if (d > 10) { enemy.vx = (dx / d) * ENEMY_SPEED; enemy.vy = (dy / d) * ENEMY_SPEED; }
+          else        { enemy.vx = 0; enemy.vy = 0; }
         }
       }
     }
@@ -1030,6 +1071,19 @@ function _updateEnemies(dt) {
         const minH = Math.min(dl, dr), minV = Math.min(dt2, db2);
         if (minH < minV) enemy.vx += (dl < dr ? -repulse : repulse) * dt;
         else             enemy.vy += (dt2 < db2 ? -repulse : repulse) * dt;
+      }
+    }
+
+    // Separation between enemies
+    for (let j = 0; j < trnEnemies.length; j++) {
+      if (trnEnemies[j] === enemy || trnEnemies[j].splatTimer >= 0) continue;
+      const sep = Math.hypot(enemy.x - trnEnemies[j].x, enemy.y - trnEnemies[j].y);
+      if (sep < 80 && sep > 0.1) {
+        const push = (80 - sep) * 0.5;
+        const nx = (enemy.x - trnEnemies[j].x) / sep;
+        const ny = (enemy.y - trnEnemies[j].y) / sep;
+        enemy.vx += nx * push;
+        enemy.vy += ny * push;
       }
     }
 
