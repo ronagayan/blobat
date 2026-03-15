@@ -356,7 +356,7 @@ function applyBallDamage(entity) {
   // Trigger game over for player when hp bottoms out
   if (entity === player && entity.hp < 0.5) {
     entity.hp = 0;
-    gameOver = true;
+    gameState = 'won'; winner = 'RED';
   }
 
   // Trigger splat for dead enemies
@@ -447,7 +447,7 @@ function checkRestartClick() {
     restart(); return;
   }
   // Center overlay restart (only when gameOver)
-  if (gameOver) {
+  if (gameState === 'won') {
     const { x: gx, y: gy, w: gw, h: gh } = RESTART_BTN;
     if (mouse.screenX >= gx && mouse.screenX <= gx + gw &&
         mouse.screenY >= gy && mouse.screenY <= gy + gh) {
@@ -456,11 +456,15 @@ function checkRestartClick() {
   }
 }
 
-let gameOver = false;
+let gameState = 'playing';  // 'playing' | 'won'
+let winner    = null;       // 'BLUE' | 'RED' | null
 let damageNumbers = [];
 
 function restart() {
-  gameOver = false;
+  gameState = 'playing'; winner = null;
+  scores = { BLUE: 0, RED: 0 };
+  scoreAnimBlue = 0; scoreAnimRed = 0;
+  goalFreezeTimer = 0; playerRespawnTimer = 0;
   damageNumbers = [];
   initTraining();
 }
@@ -971,7 +975,7 @@ function _updateEnemies(dt) {
 
 // ── updateTraining ───────────────────────────────
 function updateTraining(dt) {
-  if (gameOver) return;
+  if (gameState !== 'playing') return;
 
   updateTrainingCamera();
   _updatePlayer(dt);
@@ -1206,7 +1210,7 @@ function drawTrainingHUD() {
   }
 
   // ── YOU LOST overlay (new) ──
-  if (gameOver) {
+  if (gameState === 'won') {
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.65)';
     ctx.fillRect(0, 0, WW, WH);
