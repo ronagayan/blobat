@@ -462,9 +462,38 @@ function drawTraining() {
 
     // ── Bat (clay styled) ──
     if (!player.rolling) {
+      // Motion blur trail during snap
+      if (bat.swingPhase === 'snap' && bat.prevVisualAngles.length > 0) {
+        const trailOpacity = [0.3, 0.15, 0.05];
+        for (let t = 0; t < bat.prevVisualAngles.length; t++) {
+          const trailAngle = bat.prevVisualAngles[t];
+          const batX = player.radius + 10;
+          const bL = bat.length, hh = bat.width / 2, th = bat.width * 0.95;
+          const taperStart = batX + bL * 0.45, tipCx = batX + bL;
+          ctx.save();
+          ctx.globalAlpha = trailOpacity[t] || 0.05;
+          ctx.translate(player.x, player.y);
+          ctx.rotate(trailAngle);
+          ctx.beginPath();
+          ctx.moveTo(batX + 5, -hh);
+          ctx.lineTo(taperStart, -hh);
+          ctx.lineTo(tipCx - th, -th);
+          ctx.arc(tipCx - th, 0, th, -Math.PI / 2, Math.PI / 2);
+          ctx.lineTo(taperStart, hh);
+          ctx.lineTo(batX + 5, hh);
+          ctx.arcTo(batX, hh, batX, -hh, 5);
+          ctx.arcTo(batX, -hh, batX + 5, -hh, 5);
+          ctx.closePath();
+          ctx.fillStyle = CLAY.wallBase;
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
       ctx.save();
       ctx.translate(player.x, player.y);
-      ctx.rotate(player.angle);
+      ctx.rotate(bat.visualAngle);
+      ctx.scale(bat.visualScaleX, bat.visualScaleY);
       // Arm
       ctx.fillStyle = clayCircleGradient(player.radius + 5, 0, 6, myPlayerColor);
       ctx.beginPath(); ctx.ellipse(player.radius + 5, 0, 7, 5, 0, 0, Math.PI * 2); ctx.fill();
