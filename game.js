@@ -387,50 +387,30 @@ function getBatBase() {
 // ── Enemies ──────────────────────────────────────
 let trnEnemies = [];
 
-function trnSpawnEnemy() {
-  if (trnEnemies.length >= ENEMY_MAX_COUNT) return;
-  let ex, ey;
-  let best = null, bestDist = -1;
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const θ = Math.random() * Math.PI * 2;
-    let tx = WW / 2 + Math.cos(θ) * (WW / 2 - 120);
-    let ty = WH / 2 + Math.sin(θ) * (WH / 2 - 120);
-    tx = clamp(tx, TRN_L + 80, TRN_R - 80);
-    ty = clamp(ty, TRN_T + 80, TRN_B - 80);
-    const d = Math.hypot(tx - player.x, ty - player.y);
-    if (d >= 300) { ex = tx; ey = ty; break; }
-    if (d > bestDist) { bestDist = d; best = { x: tx, y: ty }; }
-  }
-  if (ex === undefined && best) { ex = best.x; ey = best.y; }
-  if (ex === undefined) return;
-
-  const angle = Math.atan2(trainingBall.y - ey, trainingBall.x - ex);
-  const seg = _getEnemyBatSegment({ x: ex, y: ey, radius: 26 }, angle);
-  trnEnemies.push({
-    x: ex, y: ey,
-    vx: 0, vy: 0,
-    radius: 26,
-    angle,
-    hp: ENEMY_MAX_HP, maxHp: ENEMY_MAX_HP,
-    flashTimer: 0,
-    splatTimer: -1,
-    swingCooldown: 0,
-    swingProgress: -1,
-    swingStartAngle: 0,
-    swingDir: 1,
-    prevBatBase: { x: seg.bx, y: seg.by },
-    prevBatTip:  { x: seg.tx, y: seg.ty },
-    hitThisSwing: false,
-    color: '#E74C3C',
-  });
-}
-
-function checkTrainingSpawnClick() {
-  // +ENEMY button: x=125,y=20,w=90,h=30 (canvas-space)
-  if (mouse.justDown &&
-      mouse.screenX >= 125 && mouse.screenX <= 215 &&
-      mouse.screenY >= 20  && mouse.screenY <= 50) {
-    trnSpawnEnemy();
+function spawnAllEnemies(mapCY) {
+  const starts = [
+    { x: WW * 0.82, y: mapCY },
+    { x: WW * 0.72, y: mapCY - 150 },
+    { x: WW * 0.72, y: mapCY + 150 },
+  ];
+  trnEnemies = [];
+  for (let i = 0; i < ENEMY_COUNT; i++) {
+    const sx = starts[i].x, sy = starts[i].y;
+    const angle = Math.atan2(trainingBall.y - sy, trainingBall.x - sx);
+    const seg = _getEnemyBatSegment({ x: sx, y: sy, radius: 26 }, angle);
+    trnEnemies.push({
+      x: sx, y: sy, startX: sx, startY: sy,
+      vx: 0, vy: 0,
+      radius: 26, angle,
+      hp: ENEMY_MAX_HP, maxHp: ENEMY_MAX_HP,
+      flashTimer: 0, splatTimer: -1,
+      swingCooldown: 0, swingProgress: -1,
+      swingStartAngle: 0, swingDir: 1,
+      prevBatBase: { x: seg.bx, y: seg.by },
+      prevBatTip:  { x: seg.tx, y: seg.ty },
+      hitThisSwing: false,
+      color: '#E74C3C',
+    });
   }
 }
 
@@ -494,7 +474,7 @@ function initTraining() {
   bounceParticles  = [];
   impactFlashes    = [];
   shakeTimer       = 0;
-  trnEnemies       = [];
+  spawnAllEnemies(mapCY);
   damageNumbers    = [];
 
   player.x = WW / 2;
@@ -988,7 +968,6 @@ function updateTraining(dt) {
   _updateBatBallCCD(dt);
   _updateBallPhysics(dt);
   _updateEnemies(dt);
-  checkTrainingSpawnClick();
   checkRestartClick();
 
   // Bounce particles
