@@ -1346,11 +1346,13 @@ function drawTrainingHUD() {
     ctx.globalAlpha = t;
     ctx.font = `bold ${16 + Math.round((1 - t) * 6)}px Segoe UI,sans-serif`;
     ctx.textAlign = 'center';
+    const label = typeof dn.value === 'string' ? dn.value : ('-' + dn.value);
     const r = 255, g = Math.round(255 * t + 156 * (1 - t)), b = Math.round(255 * t + 18 * (1 - t));
-    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    const col = dn.color || `rgb(${r},${g},${b})`;
+    ctx.fillStyle = col;
     ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 3;
-    ctx.strokeText('-' + dn.value, dn.x, dn.y);
-    ctx.fillText('-' + dn.value, dn.x, dn.y);
+    ctx.strokeText(label, dn.x, dn.y);
+    ctx.fillText(label, dn.x, dn.y);
     ctx.restore();
   }
 

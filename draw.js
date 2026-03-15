@@ -359,11 +359,11 @@ function drawTraining() {
     ctx.restore();
     ctx.restore();
 
-    // ── Bounce particles (clay dust) ──
+    // ── Bounce particles (clay dust / goal celebration) ──
     for (const p of bounceParticles) {
       ctx.save();
       ctx.globalAlpha = (p.life / p.maxLife) * 0.5;
-      ctx.fillStyle = clayCircleGradient(p.x, p.y, p.radius, CLAY.wallBase);
+      ctx.fillStyle = clayCircleGradient(p.x, p.y, p.radius, p.color || CLAY.wallBase);
       ctx.beginPath(); ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     }
