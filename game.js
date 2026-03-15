@@ -1045,9 +1045,18 @@ function _updateEnemies(dt) {
     if (enemy.swingCooldown > 0) enemy.swingCooldown -= dt;
   }
 
-  // Remove dead enemies
-  for (let i = trnEnemies.length - 1; i >= 0; i--) {
-    if (trnEnemies[i].splatTimer >= 0.4) trnEnemies.splice(i, 1);
+  // Respawn dead enemies in-place
+  for (const enemy of trnEnemies) {
+    if (enemy.splatTimer >= 0.4) {
+      enemy.splatTimer    = -1;
+      enemy.x             = enemy.startX;
+      enemy.y             = enemy.startY;
+      enemy.vx            = 0; enemy.vy = 0;
+      enemy.hp            = ENEMY_MAX_HP;
+      enemy.swingProgress = -1;
+      enemy.swingCooldown = 0;
+      enemy.hitThisSwing  = false;
+    }
   }
 }
 
