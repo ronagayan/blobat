@@ -458,6 +458,12 @@ function checkRestartClick() {
 
 let gameState = 'playing';  // 'playing' | 'won'
 let winner    = null;       // 'BLUE' | 'RED' | null
+let scores           = { BLUE: 0, RED: 0 };
+let scoreAnimBlue    = 0;
+let scoreAnimRed     = 0;
+let goalFreezeTimer  = 0;
+let playerRespawnTimer = 0;
+let redPossession    = false;
 let damageNumbers = [];
 
 function restart() {
