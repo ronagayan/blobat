@@ -581,198 +581,184 @@ function initTraining() {
 function _updateBatBallCCD(dt) {
   if (bat.hitCooldown > 0) bat.hitCooldown -= dt;
 
-  const angleDelta = normalizeAngle(player.angle - bat.prevAngle);
-  const angularVel = dt > 0 ? angleDelta / dt : 0;
+  const mouseAngle = player.angle; // computed in _updatePlayer each frame
 
-  // Current bat segment
-  const currSeg = _getBatSegment(player.angle);
-  const currBase = { x: currSeg.bx, y: currSeg.by };
-  const currTip = { x: currSeg.tx, y: currSeg.ty };
+  // ── Phase: idle — rubber-band follows mouse ──
+  if (bat.swingPhase === 'idle') {
+    bat.restAngle   = lerpAngle(bat.restAngle,   mouseAngle,    BAT_REST_LERP);
+    bat.visualAngle = lerpAngle(bat.visualAngle, bat.restAngle, BAT_VISUAL_LERP);
 
-  // Reset hit flag when angular velocity is low (swing ended)
-  if (Math.abs(angularVel) < 0.5) {
-    bat.hitThisSwing = false;
+    // Wind-up tension: slight stretch proportional to angular lag
+    const lag = Math.abs(normalizeAngle(bat.restAngle - bat.visualAngle));
+    bat.visualScaleX = 1.0 + Math.min(lag, 0.3) * 0.5; // max ~1.15
+    bat.visualScaleY = 1.0;
+
+    // Trigger snap on click
+    if (mouse.justDown && !player.rolling) {
+      const angDist = normalizeAngle(mouseAngle - bat.visualAngle);
+      bat.swingVelocity = angDist * BAT_SWING_POWER;
+      bat.targetAngle   = mouseAngle;
+      bat.swingPhase    = 'snap';
+      bat.swingFrame    = 0;
+      bat.hitThisSwing  = false;
+    }
+
+  } else if (bat.swingPhase === 'snap') {
+    bat.swingFrame++;
+    bat.visualAngle   += bat.swingVelocity * dt;
+    bat.swingVelocity *= Math.pow(BAT_SWING_DECAY, dt * 60);
+
+    // Impact squash
+    bat.visualScaleX = 1.3;
+    bat.visualScaleY = 0.85;
+
+    // Transition to return on overshoot or velocity decay
+    const overshoot = normalizeAngle(bat.visualAngle - bat.targetAngle);
+    if (Math.abs(overshoot) > BAT_OVERSHOOT_DEG * Math.PI / 180 ||
+        Math.abs(bat.swingVelocity) < 0.3) {
+      bat.swingPhase = 'return';
+    }
+
+  } else { // 'return'
+    bat.restAngle   = lerpAngle(bat.restAngle,   mouseAngle,    BAT_REST_LERP);
+    bat.visualAngle = lerpAngle(bat.visualAngle, bat.restAngle, BAT_RETURN_LERP);
+    bat.visualScaleX = lerp(bat.visualScaleX, 1.0, 0.2);
+    bat.visualScaleY = lerp(bat.visualScaleY, 1.0, 0.2);
+
+    if (Math.abs(normalizeAngle(bat.visualAngle - bat.restAngle)) < 0.05) {
+      bat.swingPhase   = 'idle';
+      bat.hitThisSwing = false; // allow next swing
+    }
   }
 
-  if (!bat.hitThisSwing && bat.hitCooldown <= 0 && !player.rolling) {
+  // ── CCD — only active during snap frames 2–8 ──
+  const ccdActive = (bat.swingPhase === 'snap') &&
+                    (bat.swingFrame >= 2) && (bat.swingFrame <= 8);
+
+  const currSeg  = _getBatSegment(bat.visualAngle);
+  const currBase = { x: currSeg.bx, y: currSeg.by };
+  const currTip  = { x: currSeg.tx, y: currSeg.ty };
+
+  if (!bat.hitThisSwing && bat.hitCooldown <= 0 && !player.rolling && ccdActive) {
     const bx = trainingBall.x, by = trainingBall.y;
     const hitRadius = trainingBall.radius + bat.width;
     let contactPoint = null;
 
-    // Test 1: Current frame — closest point on current bat segment to ball
+    // Test 1: current bat position
     const currTest = segmentCircleTest(currBase.x, currBase.y, currTip.x, currTip.y, bx, by, hitRadius);
-    if (currTest.hit) {
-      contactPoint = currTest.closest;
-    }
+    if (currTest.hit) contactPoint = currTest.closest;
 
-    // Test 2: CCD — check if ball passed through the swept quad
-    // Only run CCD if ball is within max bat reach distance from player
-    const ballPlayerDist = Math.hypot(bx - player.x, by - player.y);
-    const maxCCDDist = (player.radius + 10 + bat.length) * 2; // generous reach
-    const skipCCD = (bat._initFrames > 0) || (ballPlayerDist > maxCCDDist);
-    if (!contactPoint && !skipCCD) {
-      const pb = bat.prevBase, pt = bat.prevTip;
-      // Check all 4 edges of the swept quad against the ball's position
-      // Use a "fat" point test: does the ball center's path cross any swept edge?
-      // Since ball may not move much, check if ball center is inside the swept quad
-      // OR if any swept edge comes close enough to the ball
+    // Test 2-4: CCD sweep (only if ball is reachable)
+    if (!contactPoint) {
+      const ballPlayerDist = Math.hypot(bx - player.x, by - player.y);
+      const maxCCDDist = (player.radius + 10 + bat.length) * 2;
+      if (ballPlayerDist <= maxCCDDist) {
+        const pb = bat.prevBase, pt = bat.prevTip;
 
-      // Edge 1: prevBase → currBase (base sweep)
-      const e1 = segmentCircleTest(pb.x, pb.y, currBase.x, currBase.y, bx, by, hitRadius);
-      if (e1.hit) {
-        contactPoint = e1.closest;
-      }
-      // Edge 2: prevTip → currTip (tip sweep)
-      if (!contactPoint) {
-        const e2 = segmentCircleTest(pt.x, pt.y, currTip.x, currTip.y, bx, by, hitRadius);
-        if (e2.hit) {
-          contactPoint = e2.closest;
-        }
-      }
-      // Edge 3: previous bat segment
-      if (!contactPoint) {
-        const e3 = segmentCircleTest(pb.x, pb.y, pt.x, pt.y, bx, by, hitRadius);
-        if (e3.hit) {
-          contactPoint = e3.closest;
-        }
-      }
+        const e1 = segmentCircleTest(pb.x, pb.y, currBase.x, currBase.y, bx, by, hitRadius);
+        if (e1.hit) contactPoint = e1.closest;
 
-      // If still no hit, check if ball center is inside the swept quad
-      // (winding number / cross product test for convex quad)
-      if (!contactPoint) {
-        const qx = [pb.x, pt.x, currTip.x, currBase.x];
-        const qy = [pb.y, pt.y, currTip.y, currBase.y];
-        let inside = true;
-        for (let i = 0; i < 4; i++) {
-          const j = (i + 1) % 4;
-          const cross = (qx[j] - qx[i]) * (by - qy[i]) - (qy[j] - qy[i]) * (bx - qx[i]);
-          if (cross < 0) { inside = false; break; }
+        if (!contactPoint) {
+          const e2 = segmentCircleTest(pt.x, pt.y, currTip.x, currTip.y, bx, by, hitRadius);
+          if (e2.hit) contactPoint = e2.closest;
         }
-        if (!inside) {
-          // Try opposite winding
-          inside = true;
+        if (!contactPoint) {
+          const e3 = segmentCircleTest(pb.x, pb.y, pt.x, pt.y, bx, by, hitRadius);
+          if (e3.hit) contactPoint = e3.closest;
+        }
+        // Point-in-swept-quad
+        if (!contactPoint) {
+          const qx = [pb.x, pt.x, currTip.x, currBase.x];
+          const qy = [pb.y, pt.y, currTip.y, currBase.y];
+          let inside = true;
           for (let i = 0; i < 4; i++) {
             const j = (i + 1) % 4;
-            const cross = (qx[j] - qx[i]) * (by - qy[i]) - (qy[j] - qy[i]) * (bx - qx[i]);
-            if (cross > 0) { inside = false; break; }
+            if ((qx[j]-qx[i])*(by-qy[i]) - (qy[j]-qy[i])*(bx-qx[i]) < 0) { inside=false; break; }
           }
-        }
-        if (inside) {
-          // Use midpoint of swept bat as contact
-          const midBase = { x: (pb.x + currBase.x) / 2, y: (pb.y + currBase.y) / 2 };
-          const midTip = { x: (pt.x + currTip.x) / 2, y: (pt.y + currTip.y) / 2 };
-          contactPoint = closestPointOnSegment(bx, by, midBase.x, midBase.y, midTip.x, midTip.y);
+          if (!inside) {
+            inside = true;
+            for (let i = 0; i < 4; i++) {
+              const j = (i + 1) % 4;
+              if ((qx[j]-qx[i])*(by-qy[i]) - (qy[j]-qy[i])*(bx-qx[i]) > 0) { inside=false; break; }
+            }
+          }
+          if (inside) {
+            const midBase = { x: (pb.x+currBase.x)/2, y: (pb.y+currBase.y)/2 };
+            const midTip  = { x: (pt.x+currTip.x)/2,  y: (pt.y+currTip.y)/2  };
+            contactPoint = closestPointOnSegment(bx, by, midBase.x, midBase.y, midTip.x, midTip.y);
+          }
         }
       }
     }
 
-    // ── Process hit ──
     if (contactPoint) {
-      // Fix 1: Hit direction = normalize(ball_center - contact_point)
       let hitDx = bx - contactPoint.x;
       let hitDy = by - contactPoint.y;
-      let hitLen = Math.hypot(hitDx, hitDy);
-      if (hitLen > 0.01) {
-        hitDx /= hitLen;
-        hitDy /= hitLen;
-      } else {
-        // Ball exactly on contact point — use bat outward normal
-        hitDx = Math.cos(player.angle);
-        hitDy = Math.sin(player.angle);
-      }
+      const hitLen = Math.hypot(hitDx, hitDy);
+      if (hitLen > 0.01) { hitDx /= hitLen; hitDy /= hitLen; }
+      else { hitDx = Math.cos(bat.visualAngle); hitDy = Math.sin(bat.visualAngle); }
 
-      // Fix 1 cont: Dot product sanity check
-      // Bat velocity direction at contact (perpendicular to bat, in swing direction)
-      const batOutward = { x: Math.cos(player.angle), y: Math.sin(player.angle) };
-      // Bat swing velocity is perpendicular to bat direction, in the direction of angular velocity
-      const swingDir = {
-        x: -Math.sin(player.angle) * (angularVel >= 0 ? 1 : -1),
-        y:  Math.cos(player.angle) * (angularVel >= 0 ? 1 : -1),
-      };
-      const dot = hitDx * swingDir.x + hitDy * swingDir.y;
-
-      // If hit direction opposes swing direction AND we have significant swing,
-      // flip the hit direction
-      if (dot < 0 && Math.abs(angularVel) > 1) {
-        hitDx = -hitDx;
-        hitDy = -hitDy;
-      }
-
-      // Fix 3: Clamp launch angle — no more than 90° from bat outward direction
+      // Clamp hit direction: no more than 90° from bat outward
+      const outAngle = bat.visualAngle;
       const hitAngle = Math.atan2(hitDy, hitDx);
-      const outAngle = Math.atan2(batOutward.y, batOutward.x);
-      let angleDiff = normalizeAngle(hitAngle - outAngle);
+      const angleDiff = normalizeAngle(hitAngle - outAngle);
       if (Math.abs(angleDiff) > Math.PI / 2) {
-        // Clamp to nearest 90° boundary
         const clampedAngle = outAngle + Math.sign(angleDiff) * Math.PI / 2;
         hitDx = Math.cos(clampedAngle);
         hitDy = Math.sin(clampedAngle);
       }
 
-      // Swing speed at contact point
-      const pivotDist = contactPoint.t !== undefined
-        ? player.radius + 10 + contactPoint.t * bat.length
-        : Math.hypot(contactPoint.x - player.x, contactPoint.y - player.y);
-      const swingSpeed = Math.abs(angularVel) * pivotDist;
+      // Launch speed from swing velocity (rad/s * px = px/s tangential speed)
+      const pivotDist = Math.hypot(contactPoint.x - player.x, contactPoint.y - player.y);
+      const swingSpeed     = Math.abs(bat.swingVelocity) * pivotDist;
       const effectiveSpeed = Math.max(swingSpeed, 120);
 
-      // Launch
-      const powerMultiplier = 1.5;
-      trainingBall.vx = hitDx * effectiveSpeed * powerMultiplier;
-      trainingBall.vy = hitDy * effectiveSpeed * powerMultiplier;
-
-      // Cap
+      trainingBall.vx = hitDx * effectiveSpeed * BAT_POWER_MULT;
+      trainingBall.vy = hitDy * effectiveSpeed * BAT_POWER_MULT;
       const launchSpeed = Math.hypot(trainingBall.vx, trainingBall.vy);
-      if (launchSpeed > 1000) {
-        trainingBall.vx *= 1000 / launchSpeed;
-        trainingBall.vy *= 1000 / launchSpeed;
+      if (launchSpeed > MAX_BALL_SPEED) {
+        trainingBall.vx *= MAX_BALL_SPEED / launchSpeed;
+        trainingBall.vy *= MAX_BALL_SPEED / launchSpeed;
       }
-
       trainingBall.stopped = false;
       trainingBall.speed = Math.hypot(trainingBall.vx, trainingBall.vy);
 
-      // Fix 4: Set hit flag and 200ms minimum cooldown
       bat.hitThisSwing = true;
-      bat.hitCooldown = 0.2;
-
-      // Push ball out of bat
+      bat.hitCooldown  = 0.2;
       trainingBall.x = contactPoint.x + hitDx * (trainingBall.radius + bat.width + 2);
       trainingBall.y = contactPoint.y + hitDy * (trainingBall.radius + bat.width + 2);
 
-      // Screen shake
       if (trainingBall.speed > 100) {
         shakeTimer = 0.15;
         shakeIntensity = Math.min(trainingBall.speed * 0.008, 8);
       }
-
-      // Impact particles
       if (trainingBall.speed > 80) {
         for (let i = 0; i < 6; i++) {
           const a = Math.random() * Math.PI * 2;
           const spd = 60 + Math.random() * 120;
           bounceParticles.push({
             x: contactPoint.x, y: contactPoint.y,
-            vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
-            life: 0.3 + Math.random() * 0.2,
-            maxLife: 0.3 + Math.random() * 0.2,
-            radius: 3 + Math.random() * 5,
+            vx: Math.cos(a)*spd, vy: Math.sin(a)*spd,
+            life: 0.3 + Math.random()*0.2, maxLife: 0.3 + Math.random()*0.2,
+            radius: 3 + Math.random()*5,
           });
         }
         impactFlashes.push({ x: contactPoint.x, y: contactPoint.y, radius: 5, maxRadius: 35, alpha: 0.5 });
       }
-
-      // Squash
       trainingBall.squash = 0.7;
       trainingBall.squashTimer = 0.13;
       trainingBall.squashAngle = Math.atan2(hitDy, hitDx);
     }
   }
 
-  // Store current bat segment as previous for next frame's CCD
-  bat.prevBase = { x: currBase.x, y: currBase.y };
-  bat.prevTip = { x: currTip.x, y: currTip.y };
-  bat.prevAngle = player.angle;
-  if (bat._initFrames > 0) bat._initFrames--;
+  // Track previous visual angles for motion blur (max 3)
+  bat.prevVisualAngles.unshift(bat.visualAngle);
+  if (bat.prevVisualAngles.length > 3) bat.prevVisualAngles.pop();
+
+  // Store for next frame's CCD
+  bat.prevBase  = { x: currBase.x, y: currBase.y };
+  bat.prevTip   = { x: currTip.x,  y: currTip.y  };
+  bat.prevAngle = bat.visualAngle;
 }
 
 // ── Ball physics ─────────────────────────────────
