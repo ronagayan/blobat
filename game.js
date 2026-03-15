@@ -356,7 +356,8 @@ function applyBallDamage(entity) {
   // Trigger game over for player when hp bottoms out
   if (entity === player && entity.hp < 0.5) {
     entity.hp = 0;
-    // player death handled by Task 8 (respawn)
+    entity.alive = false;
+    playerRespawnTimer = 2.0;
   }
 
   // Trigger splat for dead enemies
@@ -853,6 +854,21 @@ function _updateBallPhysics(dt) {
 
 // ── Player movement ──────────────────────────────
 function _updatePlayer(dt) {
+  if (!player.alive) {
+    // playerRespawnTimer is decremented in updateTraining (before this call)
+    // Do NOT add playerRespawnTimer -= dt here — it's already handled above.
+    if (playerRespawnTimer <= 0) {
+      const mapCY = (TRN_T + TRN_B) / 2;
+      player.x = WW * 0.28;
+      player.y = mapCY;
+      player.vx = 0; player.vy = 0;
+      player.hp = PLAYER_HP;
+      player.alive = true;
+      player.invulnTimer = 1.0;
+    }
+    return;
+  }
+
   player.angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
 
   if (player.rolling) {
