@@ -465,11 +465,11 @@ function drawTraining() {
       // Motion blur trail during snap
       if (bat.swingPhase === 'snap' && bat.prevVisualAngles.length > 0) {
         const trailOpacity = [0.3, 0.15, 0.05];
+        const batX = player.radius + 10;
+        const bL = bat.length, hh = bat.width / 2, th = bat.width * 0.95;
+        const taperStart = batX + bL * 0.45, tipCx = batX + bL;
         for (let t = 0; t < bat.prevVisualAngles.length; t++) {
           const trailAngle = bat.prevVisualAngles[t];
-          const batX = player.radius + 10;
-          const bL = bat.length, hh = bat.width / 2, th = bat.width * 0.95;
-          const taperStart = batX + bL * 0.45, tipCx = batX + bL;
           ctx.save();
           ctx.globalAlpha = trailOpacity[t] || 0.05;
           ctx.translate(player.x, player.y);
