@@ -839,6 +839,16 @@ function _updateBallPhysics(dt) {
   } else {
     trainingBall.squash = 1;
   }
+
+  // Goal detection
+  if (goalFreezeTimer <= 0 && !trainingBall.stopped) {
+    function ballInGate(gate) {
+      return trainingBall.x > gate.x && trainingBall.x < gate.x + gate.w &&
+             trainingBall.y > gate.y && trainingBall.y < gate.y + gate.h;
+    }
+    if (ballInGate(GATE_LEFT))  triggerGoal('RED');
+    if (ballInGate(GATE_RIGHT)) triggerGoal('BLUE');
+  }
 }
 
 // ── Player movement ──────────────────────────────
@@ -1028,6 +1038,36 @@ function _updateEnemies(dt) {
 // ── updateTraining ───────────────────────────────
 function updateTraining(dt) {
   if (gameState !== 'playing') return;
+
+  // playerRespawnTimer always ticks, even during goal freeze
+  if (!player.alive && playerRespawnTimer > 0) {
+    playerRespawnTimer -= dt;
+  }
+
+  // Score anim timers
+  if (scoreAnimBlue > 0) scoreAnimBlue = Math.max(0, scoreAnimBlue - dt);
+  if (scoreAnimRed  > 0) scoreAnimRed  = Math.max(0, scoreAnimRed  - dt);
+
+  // Goal freeze: run only particles + damage numbers, then return
+  if (goalFreezeTimer > 0) {
+    goalFreezeTimer -= dt;
+    if (goalFreezeTimer <= 0) { goalFreezeTimer = 0; respawnAfterGoal(); }
+    // Update particles during freeze so goal celebration animates
+    for (let i = bounceParticles.length - 1; i >= 0; i--) {
+      const p = bounceParticles[i];
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.vx *= 0.94; p.vy *= 0.94;
+      p.life -= dt;
+      if (p.life <= 0) bounceParticles.splice(i, 1);
+    }
+    for (let i = damageNumbers.length - 1; i >= 0; i--) {
+      const dn = damageNumbers[i];
+      dn.y -= 40 * dt;
+      dn.life -= dt * 1.5;
+      if (dn.life <= 0) damageNumbers.splice(i, 1);
+    }
+    return;  // ← skips all game-update calls below
+  }
 
   updateTrainingCamera();
   _updatePlayer(dt);
