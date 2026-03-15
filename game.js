@@ -36,6 +36,7 @@ const TRN_DEBUG          = false;
 const GOALS_TO_WIN         = 5;
 const GOAL_FREEZE_DURATION = 1.0;   // seconds
 const ENEMY_COUNT          = 3;
+const MIN_BALL_SPEED     = 0.8;   // px per frame — ball never fully stops
 
 // ── Input ────────────────────────────────────────
 const keys  = {};
@@ -774,11 +775,12 @@ function _updateBallPhysics(dt) {
       trainingBall.speed = 1000;
     }
 
-    if (trainingBall.speed < 30) {
-      trainingBall.vx = 0;
-      trainingBall.vy = 0;
-      trainingBall.speed = 0;
-      trainingBall.stopped = true;
+    // Minimum speed floor — ball never fully stops once in motion
+    if (trainingBall.speed > 0 && trainingBall.speed < MIN_BALL_SPEED) {
+      const ratio = MIN_BALL_SPEED / trainingBall.speed;
+      trainingBall.vx *= ratio;
+      trainingBall.vy *= ratio;
+      trainingBall.speed = MIN_BALL_SPEED;
     }
 
     // Bounce off outer walls
