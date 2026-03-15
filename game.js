@@ -1263,12 +1263,59 @@ function drawTrainingHUD() {
   ctx.fillText('+ ENEMY', 170, 40);
   ctx.restore();
 
-  // Mode label
-  ctx.save();
-  ctx.fillStyle = 'rgba(200,160,100,0.5)';
-  ctx.font = 'bold 14px Segoe UI,sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('TRAINING GROUNDS', WW / 2, 35);
-  ctx.restore();
+  // ── Scoreboard ──
+  {
+    const boxW = 120, boxH = 70, sep = 24;
+    const totalW = boxW * 2 + sep;
+    const startX = (WW - totalW) / 2;
+    const startY = 12;
+
+    function drawScoreBox(x, y, w, h, color, label, score, animTimer) {
+      const scale = 1.0 + 0.3 * (animTimer / 0.4);
+      // Shadow
+      ctx.save();
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.beginPath(); ctx.roundRect(x + 3, y + 4, w, h, 12); ctx.fill();
+      ctx.restore();
+      // Box
+      ctx.save();
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.roundRect(x, y, w, h, 12); ctx.fill();
+      // Highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.beginPath(); ctx.roundRect(x + 4, y + 3, w - 8, h / 2 - 3, [10, 10, 0, 0]); ctx.fill();
+      // Stroke
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.roundRect(x, y, w, h, 12); ctx.stroke();
+      // Label
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.font = 'bold 12px Segoe UI,sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(label, x + w / 2, y + 18);
+      // Score number with bounce scale
+      ctx.save();
+      ctx.translate(x + w / 2, y + h / 2 + 14);
+      ctx.scale(scale, scale);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 42px Segoe UI,sans-serif'; ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 6;
+      ctx.fillText(String(score), 0, 0);
+      ctx.restore();
+      ctx.restore();
+    }
+
+    drawScoreBox(startX,              startY, boxW, boxH, '#3498DB', 'BLUE', scores.BLUE, scoreAnimBlue);
+    drawScoreBox(startX + boxW + sep, startY, boxW, boxH, '#E74C3C', 'RED',  scores.RED,  scoreAnimRed);
+
+    // Separator ball
+    ctx.save();
+    ctx.fillStyle = '#F39C12';
+    ctx.shadowColor = 'rgba(243,156,18,0.5)'; ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(startX + boxW + sep / 2, startY + boxH / 2, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
 
   // ── Momentum bar (clay styled) ──
   const barW = 300, barH = 28;
