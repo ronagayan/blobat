@@ -163,6 +163,50 @@ function drawBlobBody(x, y, r, sx, sy, col) {
   ctx.restore();
 }
 
+// ── drawGate ────────────────────────────────────
+function drawGate(gate, glowColor) {
+  const alpha = 0.20 + 0.10 * Math.sin(performance.now() / 600);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(gate.x, gate.y, gate.w, gate.h);
+  ctx.clip();
+
+  // Glow fill
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = glowColor;
+  ctx.fillRect(gate.x, gate.y, gate.w, gate.h);
+
+  // Net lines (+45°)
+  ctx.globalAlpha = 0.12;
+  ctx.strokeStyle = 'rgba(255,255,255,1)';
+  ctx.lineWidth = 1;
+  for (let d = -gate.h; d < gate.w + gate.h; d += 16) {
+    ctx.beginPath();
+    ctx.moveTo(gate.x + d,          gate.y);
+    ctx.lineTo(gate.x + d + gate.h, gate.y + gate.h);
+    ctx.stroke();
+  }
+  // Net lines (-45°)
+  for (let d = -gate.h; d < gate.w + gate.h; d += 16) {
+    ctx.beginPath();
+    ctx.moveTo(gate.x + d + gate.h, gate.y);
+    ctx.lineTo(gate.x + d,          gate.y + gate.h);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+
+  // Frame outline
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = glowColor;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.roundRect(gate.x, gate.y, gate.w, gate.h, 4);
+  ctx.stroke();
+  ctx.restore();
+}
+
 // ── drawTraining (world-space) ──────────────────
 function drawTraining() {
     // Apply screen shake
@@ -236,6 +280,10 @@ function drawTraining() {
       ctx.fillStyle = CLAY.pillar;
       ctx.restore();
     });
+
+    // ── Gates ──
+  if (GATE_LEFT)  drawGate(GATE_LEFT,  'rgba(52,152,219,1)');
+  if (GATE_RIGHT) drawGate(GATE_RIGHT, 'rgba(231,76,60,1)');
 
     // ── Training obstacles (same clay cover blocks) ──
     for (const r of TRN_RECTS) {
