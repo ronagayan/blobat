@@ -424,11 +424,19 @@ function spawnAllEnemies(mapCY) {
       radius: 26, angle,
       hp: ENEMY_MAX_HP, maxHp: ENEMY_MAX_HP,
       flashTimer: 0, splatTimer: -1,
-      swingCooldown: 0, swingProgress: -1,
-      swingStartAngle: 0, swingDir: 1,
+      swingCooldown: 0,
+      // Rubber-band bat fields (replaces swingProgress)
+      swingPhase: 'idle',      // 'idle' | 'snap' | 'return'
+      swingFrame: 0,
+      restAngle: angle,
+      visualAngle: angle,
+      swingVelocity: 0,
+      targetAngle: angle,
+      swingDir: 1,
       prevBatBase: { x: seg.bx, y: seg.by },
       prevBatTip:  { x: seg.tx, y: seg.ty },
       hitThisSwing: false,
+      idleTimer: 0,
       color: '#E74C3C',
     });
   }
