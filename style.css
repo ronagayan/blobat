@@ -1,0 +1,70 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #1a1008;
+  overflow: hidden;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+#gameCanvas {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform-origin: center center;
+  transform: translate(-50%, -50%) scale(1);
+  border-radius: 14px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+}
+
+/* ── Title Screen ── */
+#titleScreen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: rgba(15, 8, 2, 0.93);
+  z-index: 20;
+}
+
+#titleText {
+  font-size: clamp(32px, 6vw, 72px);
+  font-weight: 900;
+  letter-spacing: 6px;
+  color: #E8C9A0;
+  text-shadow: 0 4px 24px rgba(212,165,116,0.5), 0 0 60px rgba(212,165,116,0.2);
+}
+
+#titleSub {
+  font-size: clamp(12px, 1.8vw, 18px);
+  color: rgba(200,160,100,0.6);
+  letter-spacing: 2px;
+}
+
+#playBtn {
+  margin-top: 16px;
+  padding: 14px 56px;
+  font-size: clamp(14px, 2vw, 20px);
+  font-weight: 700;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  font-family: inherit;
+  color: #1a0a04;
+  background: linear-gradient(135deg, #E8C9A0, #D4A574);
+  border: none;
+  border-radius: 40px;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(212,165,116,0.4), 0 2px 0 rgba(160,120,80,0.8);
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+#playBtn:hover  { transform: translateY(-2px); box-shadow: 0 6px 28px rgba(212,165,116,0.5); }
+#playBtn:active { transform: translateY(1px);  box-shadow: 0 2px 10px rgba(212,165,116,0.3); }
+
+#controlsHint {
+  font-size: 11px;
+  color: rgba(180,140,90,0.4);
+  letter-spacing: 1px;
+  margin-top: 8px;
+}

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Training Grounds</title>
+  <link rel="icon" href="icon.svg" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- Title screen overlay — hidden when PLAY is clicked -->
+  <div id="titleScreen">
+    <h1 id="titleText">TRAINING GROUNDS</h1>
+    <p id="titleSub">Swing the bat. Hit the ball. Knock out enemies.</p>
+    <button id="playBtn">PLAY</button>
+    <p id="controlsHint">WASD: Move &nbsp;|&nbsp; Mouse: Aim &amp; Swing &nbsp;|&nbsp; Space: Roll</p>
+  </div>
+
+  <script src="game.js"></script>
+  <script src="draw.js"></script>
+</body>
+</html>
