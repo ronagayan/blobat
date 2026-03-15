@@ -37,6 +37,12 @@ const GOALS_TO_WIN         = 5;
 const GOAL_FREEZE_DURATION = 1.0;   // seconds
 const ENEMY_COUNT          = 3;
 const MIN_BALL_SPEED     = 0.8;   // px per frame — ball never fully stops
+const BAT_REST_LERP      = 0.08;   // how fast rest angle follows mouse
+const BAT_VISUAL_LERP    = 0.12;   // how fast visual trails rest
+const BAT_SWING_POWER    = 18;     // angular velocity on snap
+const BAT_SWING_DECAY    = 0.75;   // per-frame velocity decay during snap
+const BAT_OVERSHOOT_DEG  = 25;     // degrees past target before spring return
+const BAT_RETURN_LERP    = 0.25;   // spring return speed
 
 // ── Input ────────────────────────────────────────
 const keys  = {};
@@ -69,6 +75,8 @@ function normalizeAngle(a) {
   while (a < -Math.PI) a += Math.PI * 2;
   return a;
 }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function lerpAngle(a, b, t) { return a + normalizeAngle(b - a) * t; }
 
 // ── Mouse events ─────────────────────────────────
 canvas.addEventListener('mousemove', e => {
@@ -210,6 +218,16 @@ const bat = {
   prevTip:  { x: 0, y: 0 },
   hitThisSwing: false,
   hitCooldown: 0,
+  // Rubber-band fields
+  restAngle: 0,
+  visualAngle: 0,
+  swingVelocity: 0,
+  swingPhase: 'idle',      // 'idle' | 'snap' | 'return'
+  swingFrame: 0,
+  targetAngle: 0,
+  visualScaleX: 1.0,
+  visualScaleY: 1.0,
+  prevVisualAngles: [],    // last 3 angles for motion blur
 };
 
 // ── Visual FX state ──────────────────────────────
