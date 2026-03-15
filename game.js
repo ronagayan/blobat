@@ -455,6 +455,72 @@ function restart() {
   initTraining();
 }
 
+function triggerGoal(team) {
+  trainingBall.vx = 0; trainingBall.vy = 0;
+  trainingBall.stopped = true;
+  goalFreezeTimer = GOAL_FREEZE_DURATION;
+
+  const gate = (team === 'RED') ? GATE_LEFT : GATE_RIGHT;
+  const gateCx = gate.x + gate.w / 2;
+  const gateCy = gate.y + gate.h / 2;
+  const teamColor = (team === 'RED') ? '#E74C3C' : '#3498DB';
+
+  // Celebration particles
+  for (let i = 0; i < 25; i++) {
+    const a   = Math.random() * Math.PI * 2;
+    const spd = 150 + Math.random() * 250;
+    bounceParticles.push({
+      x: gateCx, y: gateCy,
+      vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+      life: 0.8, maxLife: 0.8,
+      radius: 4 + Math.random() * 4,
+      color: teamColor,
+    });
+  }
+
+  // Score bounce anim
+  if (team === 'BLUE') scoreAnimBlue = 0.4;
+  else                 scoreAnimRed  = 0.4;
+
+  // +1 float
+  damageNumbers.push({
+    x: gateCx, y: gateCy - 20,
+    value: '+1', color: teamColor,
+    life: 1.0, maxLife: 1.0,
+  });
+
+  scores[team]++;
+  if (scores[team] >= GOALS_TO_WIN) {
+    gameState = 'won';
+    winner = team;
+  }
+}
+
+function respawnAfterGoal() {
+  const mapCY = (TRN_T + TRN_B) / 2;
+  trainingBall.x = WW / 2; trainingBall.y = mapCY;
+  trainingBall.vx = 0; trainingBall.vy = 0;
+  trainingBall.speed = 0; trainingBall.stopped = true;
+  trainingBall.trail = [];
+  for (const e of trnEnemies) {
+    e.x = e.startX; e.y = e.startY;
+    e.vx = 0; e.vy = 0;
+    e.hp = ENEMY_MAX_HP;
+    e.splatTimer = -1;
+    e.swingProgress = -1;
+    e.swingCooldown = 0;
+    e.hitThisSwing = false;
+  }
+  if (!player.alive) {
+    player.x = WW * 0.28; player.y = mapCY;
+    player.vx = 0; player.vy = 0;
+    player.hp = PLAYER_HP;
+    player.alive = true;
+    player.invulnTimer = 1.0;
+    playerRespawnTimer = 0;
+  }
+}
+
 // ── initTraining ─────────────────────────────────
 function initTraining() {
   calcTrainingBounds();
