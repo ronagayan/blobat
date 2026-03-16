@@ -42,6 +42,8 @@ const BAT_SWING_POWER    = 9;      // was 18 — half the snap velocity
 const BAT_SWING_DECAY    = 0.68;   // was 0.75 — swing dies out faster
 const BAT_OVERSHOOT_DEG  = 12;     // was 25 — much smaller overshoot
 const BAT_RETURN_LERP    = 0.18;   // was 0.25 — gentler spring return
+const ENEMY_BAT_SWING_POWER   = 7;    // weaker than player (BAT_SWING_POWER = 9)
+const ENEMY_BAT_OVERSHOOT_DEG = 8;    // more precise, less overshoot
 
 // ── Input ────────────────────────────────────────
 const keys  = {};
@@ -1079,10 +1081,18 @@ function _updateEnemies(dt) {
       // Trigger snap when visual has caught up AND ball in range AND cooldown done
       const angleLag  = Math.abs(normalizeAngle(enemy.restAngle - enemy.visualAngle));
       const inRange   = ed < (enemy === attacker ? 100 : 150);
-      if (inRange && enemy.swingCooldown <= 0 && !enemy.hitThisSwing &&
-          angleLag < 15 * Math.PI / 180) {
+      // Don't swing if ball is already heading toward enemy goal (GATE_RIGHT)
+      const ballDir = Math.atan2(trainingBall.vy, trainingBall.vx);
+      const toEnemyGoal = Math.atan2(
+        GATE_RIGHT.y + GATE_RIGHT.h / 2 - by,
+        GATE_RIGHT.x + GATE_RIGHT.w / 2 - bx
+      );
+      const headingToGoal = trainingBall.speed > 100 &&
+        Math.abs(normalizeAngle(ballDir - toEnemyGoal)) < Math.PI / 3;
+      if (!headingToGoal && inRange && enemy.swingCooldown <= 0 &&
+          !enemy.hitThisSwing && angleLag < 15 * Math.PI / 180) {
         const angDist      = normalizeAngle(idealAngle - enemy.visualAngle);
-        enemy.swingVelocity = angDist * BAT_SWING_POWER;
+        enemy.swingVelocity = angDist * ENEMY_BAT_SWING_POWER;
         enemy.targetAngle  = idealAngle;
         enemy.swingPhase   = 'snap';
         enemy.swingFrame   = 0;
@@ -1098,7 +1108,7 @@ function _updateEnemies(dt) {
       enemy.swingVelocity  *= Math.pow(BAT_SWING_DECAY, dt * 60);
 
       const overshoot = normalizeAngle(enemy.visualAngle - enemy.targetAngle);
-      if (Math.abs(overshoot) > BAT_OVERSHOOT_DEG * Math.PI / 180 ||
+      if (Math.abs(overshoot) > ENEMY_BAT_OVERSHOOT_DEG * Math.PI / 180 ||
           Math.abs(enemy.swingVelocity) < 0.3) {
         enemy.swingPhase   = 'return';
         enemy.swingCooldown = 1.2 + Math.random() * 0.6;
