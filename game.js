@@ -516,6 +516,8 @@ let scoreAnimRed     = 0;
 let goalFreezeTimer  = 0;
 let playerRespawnTimer = 0;
 let damageNumbers = [];
+let enemyRoleTimer = 0;
+let cachedAttacker = null, cachedGoalkeeper = null, cachedSupport = null;
 
 function restart() {
   gameState = 'playing'; winner = null;
@@ -602,10 +604,14 @@ function respawnAfterGoal() {
     player.invulnTimer = 1.0;
     playerRespawnTimer = 0;
   }
+  enemyRoleTimer = 0;
+  cachedAttacker = null; cachedGoalkeeper = null; cachedSupport = null;
 }
 
 // ── initTraining ─────────────────────────────────
 function initTraining() {
+  enemyRoleTimer = 0;
+  cachedAttacker = null; cachedGoalkeeper = null; cachedSupport = null;
   calcTrainingBounds();
   const mapCY = (TRN_T + TRN_B) / 2;
 
@@ -990,22 +996,34 @@ function _updateEnemies(dt) {
     if (e.swingPhase !== 'snap' && e.splatTimer < 0) applyBallDamage(e);
   }
 
-  // ── Assign roles by distance each frame ──
+  // ── Assign roles — locked for 1.5s, refresh if attacker dies ──
   const bx = trainingBall.x, by = trainingBall.y;
   const alive = trnEnemies.filter(e => e.splatTimer < 0);
-  let attacker = null, goalkeeper = null, support = null;
-  if (alive.length > 0) {
-    const sorted = alive.slice().sort((a, b) =>
-      Math.hypot(a.x-bx, a.y-by) - Math.hypot(b.x-bx, b.y-by));
-    attacker = sorted[0];
-    if (sorted.length >= 2) {
-      const others = sorted.slice(1).sort((a, b) =>
-        Math.hypot(b.x-attacker.x, b.y-attacker.y) -
-        Math.hypot(a.x-attacker.x, a.y-attacker.y));
-      goalkeeper = others[0];
-      support    = others.length > 1 ? others[1] : null;
+  enemyRoleTimer -= dt;
+  const attackerDead = !cachedAttacker || cachedAttacker.splatTimer >= 0;
+  if (enemyRoleTimer <= 0 || attackerDead) {
+    enemyRoleTimer = 1.5;
+    if (alive.length > 0) {
+      const sorted = alive.slice().sort((a, b) =>
+        Math.hypot(a.x-bx, a.y-by) - Math.hypot(b.x-bx, b.y-by));
+      cachedAttacker = sorted[0];
+      if (sorted.length >= 2) {
+        const others = sorted.slice(1).sort((a, b) =>
+          Math.hypot(b.x-cachedAttacker.x, b.y-cachedAttacker.y) -
+          Math.hypot(a.x-cachedAttacker.x, a.y-cachedAttacker.y));
+        cachedGoalkeeper = others[0];
+        cachedSupport    = others.length > 1 ? others[1] : null;
+      } else {
+        cachedGoalkeeper = null; cachedSupport = null;
+      }
+    } else {
+      cachedAttacker = null; cachedGoalkeeper = null; cachedSupport = null;
     }
   }
+  // Validate cached roles (may have died since last assignment)
+  const attacker   = (cachedAttacker?.splatTimer   < 0) ? cachedAttacker   : null;
+  const goalkeeper = (cachedGoalkeeper?.splatTimer < 0) ? cachedGoalkeeper : null;
+  const support    = (cachedSupport?.splatTimer    < 0) ? cachedSupport    : null;
 
   for (const enemy of trnEnemies) {
     if (enemy.flashTimer > 0) enemy.flashTimer -= dt;
@@ -1175,6 +1193,18 @@ function _updateEnemies(dt) {
       enemy.idleTimer = 0;
     }
 
+    // Non-attacker ball avoidance: steer away if within 120px
+    // (placed after anti-freeze so avoidance wins when near ball)
+    if (enemy !== attacker) {
+      const ballDistEnemy = Math.hypot(enemy.x - bx, enemy.y - by);
+      if (ballDistEnemy < 120 && ballDistEnemy > 0.01) {
+        const awayX = (enemy.x - bx) / ballDistEnemy;
+        const awayY = (enemy.y - by) / ballDistEnemy;
+        enemy.vx = lerp(enemy.vx, awayX * ENEMY_SPEED * 0.7, 0.2);
+        enemy.vy = lerp(enemy.vy, awayY * ENEMY_SPEED * 0.7, 0.2);
+      }
+    }
+
     // Wall repulsion
     const repulse = 180;
     if (enemy.x - TRN_L < 60) enemy.vx += repulse * dt;
@@ -1231,6 +1261,11 @@ function _updateEnemies(dt) {
       const seg0 = _getEnemyBatSegment(enemy, spawnAngle);
       enemy.prevBatBase = { x: seg0.bx, y: seg0.by };
       enemy.prevBatTip  = { x: seg0.tx, y: seg0.ty };
+      // Invalidate cached role if this enemy held a role
+      if (cachedAttacker === enemy)   cachedAttacker   = null;
+      if (cachedGoalkeeper === enemy) cachedGoalkeeper = null;
+      if (cachedSupport === enemy)    cachedSupport    = null;
+      enemyRoleTimer = 0; // force immediate reassignment
     }
   }
 }
