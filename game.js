@@ -27,7 +27,6 @@ const BALL_FRICTION      = 0.985;
 const MAX_BALL_SPEED     = 1000;
 const ENEMY_MAX_HP       = 100;
 const ENEMY_SPEED        = 160;
-const ENEMY_DODGE_SPEED  = 200;
 const ENEMY_BAT_LENGTH   = 48;
 const ENEMY_BAT_WIDTH    = 14;
 const TRN_WALL           = 40;
@@ -432,7 +431,6 @@ function spawnAllEnemies(mapCY) {
       visualAngle: angle,
       swingVelocity: 0,
       targetAngle: angle,
-      swingDir: 1,
       prevBatBase: { x: seg.bx, y: seg.by },
       prevBatTip:  { x: seg.tx, y: seg.ty },
       hitThisSwing: false,
@@ -471,7 +469,6 @@ let scoreAnimBlue    = 0;
 let scoreAnimRed     = 0;
 let goalFreezeTimer  = 0;
 let playerRespawnTimer = 0;
-let redPossession    = false;
 let damageNumbers = [];
 
 function restart() {
@@ -540,6 +537,16 @@ function respawnAfterGoal() {
     e.swingCooldown = 0;
     e.hitThisSwing  = false;
     e.idleTimer     = 0;
+      // Reset rubber-band bat angles to face ball from spawn
+      const spawnAngle = Math.atan2(trainingBall.y - e.startY, trainingBall.x - e.startX);
+      e.restAngle     = spawnAngle;
+      e.visualAngle   = spawnAngle;
+      e.angle         = spawnAngle;
+      e.swingVelocity = 0;
+      e.targetAngle   = spawnAngle;
+      const seg0 = _getEnemyBatSegment(e, spawnAngle);
+      e.prevBatBase = { x: seg0.bx, y: seg0.by };
+      e.prevBatTip  = { x: seg0.tx, y: seg0.ty };
   }
   if (!player.alive) {
     player.x = WW * 0.28; player.y = mapCY;
