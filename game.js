@@ -452,6 +452,20 @@ function _resolveEntitySeparation() {
   }
 }
 
+function arrivalSteer(enemy, targetX, targetY, slowRadius) {
+  const sr = slowRadius !== undefined ? slowRadius : 80;
+  const dx = targetX - enemy.x, dy = targetY - enemy.y;
+  const d  = Math.hypot(dx, dy);
+  if (d < 1) {
+    enemy.vx = lerp(enemy.vx, 0, 0.15);
+    enemy.vy = lerp(enemy.vy, 0, 0.15);
+    return;
+  }
+  const desiredSpeed = d < sr ? ENEMY_SPEED * (d / sr) : ENEMY_SPEED;
+  enemy.vx = lerp(enemy.vx, (dx / d) * desiredSpeed, 0.15);
+  enemy.vy = lerp(enemy.vy, (dy / d) * desiredSpeed, 0.15);
+}
+
 function spawnAllEnemies(mapCY) {
   const starts = [
     { x: WW * 0.82, y: mapCY },
@@ -1143,36 +1157,28 @@ function _updateEnemies(dt) {
 
     } else if (enemy === attacker) {
       if (enemy.hitThisSwing && enemy.swingCooldown > 0.8) {
-        // Back off after swing
+        // Back off after swing — steer away from ball
         if (ed > 0.1) {
-          enemy.vx = -(edx / ed) * ENEMY_SPEED * 0.4;
-          enemy.vy = -(edy / ed) * ENEMY_SPEED * 0.4;
+          const awayX = -(edx / ed), awayY = -(edy / ed);
+          enemy.vx = lerp(enemy.vx, awayX * ENEMY_SPEED * 0.4, 0.15);
+          enemy.vy = lerp(enemy.vy, awayY * ENEMY_SPEED * 0.4, 0.15);
         }
-      } else if (ed > 0.1) {
-        // Chase ball
-        enemy.vx = (edx / ed) * ENEMY_SPEED;
-        enemy.vy = (edy / ed) * ENEMY_SPEED;
+      } else {
+        arrivalSteer(enemy, bx, by, 80);
       }
 
     } else if (enemy === goalkeeper) {
       // Position between ball and GATE_RIGHT
       const gateCx = GATE_RIGHT.x + GATE_RIGHT.w / 2;
-      const gateCy = GATE_RIGHT.y + GATE_RIGHT.h / 2;
       const targetX = clamp(bx * 0.3 + gateCx * 0.7, TRN_R - 200, TRN_R - 120);
       const targetY = clamp(by, GATE_RIGHT.y - 60, GATE_RIGHT.y + GATE_RIGHT.h + 60);
-      const dx = targetX - enemy.x, dy = targetY - enemy.y;
-      const d  = Math.hypot(dx, dy);
-      if (d > 10) { enemy.vx = (dx / d) * ENEMY_SPEED; enemy.vy = (dy / d) * ENEMY_SPEED; }
-      else        { enemy.vx = 0; enemy.vy = 0; }
+      arrivalSteer(enemy, targetX, targetY, 60);
 
     } else if (enemy === support) {
       // Move toward predicted ball position (0.5s lookahead)
       const px = clamp(bx + trainingBall.vx * 0.5, TRN_L + 40, TRN_R - 40);
       const py = clamp(by + trainingBall.vy * 0.5, TRN_T + 40, TRN_B - 40);
-      const dx = px - enemy.x, dy = py - enemy.y;
-      const d  = Math.hypot(dx, dy);
-      if (d > 10) { enemy.vx = (dx / d) * ENEMY_SPEED; enemy.vy = (dy / d) * ENEMY_SPEED; }
-      else        { enemy.vx = 0; enemy.vy = 0; }
+      arrivalSteer(enemy, px, py, 60);
 
     } else {
       // No role — patrol toward ball slowly
