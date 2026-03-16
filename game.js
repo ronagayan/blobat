@@ -691,7 +691,10 @@ function _updateBatBallCCD(dt) {
     // Trigger snap on click
     if (mouse.justDown && !player.rolling) {
       const angDist = normalizeAngle(mouseAngle - bat.visualAngle);
-      bat.swingVelocity = angDist * BAT_SWING_POWER;
+      // Minimum velocity so bat always sweeps even when already aimed at ball.
+      // Without this, angDist≈0 → velocity≈0 → snap ends before CCD fires.
+      const swingDir = angDist !== 0 ? Math.sign(angDist) : 1;
+      bat.swingVelocity = swingDir * Math.max(Math.abs(angDist * BAT_SWING_POWER), BAT_SWING_POWER * 0.5);
       bat.targetAngle   = mouseAngle;
       bat.swingPhase    = 'snap';
       bat.swingFrame    = 0;
@@ -735,9 +738,9 @@ function _updateBatBallCCD(dt) {
   }
   // (in 'return' phase with squashTimer==0, the return block's lerp back to 1.0 applies)
 
-  // ── CCD — only active during snap frames 2–8 ──
+  // ── CCD — active during snap frames 1–10 ──
   const ccdActive = (bat.swingPhase === 'snap') &&
-                    (bat.swingFrame >= 2) && (bat.swingFrame <= 10);
+                    (bat.swingFrame >= 1) && (bat.swingFrame <= 10);
 
   const currSeg  = _getBatSegment(bat.visualAngle);
   const currBase = { x: currSeg.bx, y: currSeg.by };
@@ -1105,8 +1108,9 @@ function _updateEnemies(dt) {
         Math.abs(normalizeAngle(ballDir - toEnemyGoal)) < Math.PI / 3;
       if (!headingToGoal && inRange && enemy.swingCooldown <= 0 &&
           !enemy.hitThisSwing && angleLag < 15 * Math.PI / 180) {
-        const angDist      = normalizeAngle(idealAngle - enemy.visualAngle);
-        enemy.swingVelocity = angDist * ENEMY_BAT_SWING_POWER;
+        const angDist   = normalizeAngle(idealAngle - enemy.visualAngle);
+        const eSwingDir = angDist !== 0 ? Math.sign(angDist) : 1;
+        enemy.swingVelocity = eSwingDir * Math.max(Math.abs(angDist * ENEMY_BAT_SWING_POWER), ENEMY_BAT_SWING_POWER * 0.5);
         enemy.targetAngle  = idealAngle;
         enemy.swingPhase   = 'snap';
         enemy.swingFrame   = 0;
@@ -1138,9 +1142,9 @@ function _updateEnemies(dt) {
       }
     }
 
-    // ── CCD during snap frames 2–8 ──
+    // ── CCD during snap frames 1–10 ──
     const ccdActive = enemy.swingPhase === 'snap' &&
-                      enemy.swingFrame >= 2 && enemy.swingFrame <= 10;
+                      enemy.swingFrame >= 1 && enemy.swingFrame <= 10;
     if (ccdActive && !enemy.hitThisSwing) {
       const currSeg = _getEnemyBatSegment(enemy, enemy.visualAngle);
       const hb = trainingBall.x, hy = trainingBall.y;
@@ -1206,7 +1210,15 @@ function _updateEnemies(dt) {
           enemy.vy = lerp(enemy.vy, awayY * ENEMY_SPEED * 0.4, 0.15);
         }
       } else {
-        arrivalSteer(enemy, bx, by, 80);
+        // Approach from behind ball (opposite side of GATE_LEFT = player's goal).
+        // This ensures the bat swings toward the goal rather than away from it.
+        const gateCx = GATE_LEFT.x + GATE_LEFT.w / 2;
+        const gateCy = GATE_LEFT.y + GATE_LEFT.h / 2;
+        const [awx, awy] = safeNormalize(bx - gateCx, by - gateCy);
+        const approachDist = enemy.radius + trainingBall.radius + 30;
+        const approachX = clamp(bx + awx * approachDist, TRN_L + enemy.radius, TRN_R - enemy.radius);
+        const approachY = clamp(by + awy * approachDist, TRN_T + enemy.radius, TRN_B - enemy.radius);
+        arrivalSteer(enemy, approachX, approachY, 80);
       }
 
     } else if (enemy === goalkeeper) {
