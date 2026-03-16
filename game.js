@@ -44,6 +44,7 @@ const BAT_OVERSHOOT_DEG  = 12;     // was 25 — much smaller overshoot
 const BAT_RETURN_LERP    = 0.18;   // was 0.25 — gentler spring return
 const ENEMY_BAT_SWING_POWER   = 7;    // weaker than player (BAT_SWING_POWER = 9)
 const ENEMY_BAT_OVERSHOOT_DEG = 8;    // more precise, less overshoot
+const MAX_SWING_FRAMES        = 20;   // safety: force snap→return after this many frames
 
 // ── Input ────────────────────────────────────────
 const keys  = {};
@@ -78,6 +79,11 @@ function normalizeAngle(a) {
 }
 function lerp(a, b, t) { return a + (b - a) * t; }
 function lerpAngle(a, b, t) { return a + normalizeAngle(b - a) * t; }
+// Returns [nx, ny] unit vector from (ax,ay) toward (bx,by); returns [0,0] if coincident.
+function safeNormalize(dx, dy) {
+  const d = Math.hypot(dx, dy);
+  return d > 0.001 ? [dx / d, dy / d] : [0, 0];
+}
 
 // ── Mouse events ─────────────────────────────────
 canvas.addEventListener('mousemove', e => {
@@ -367,12 +373,13 @@ function applyBallDamage(entity) {
   trainingBall.vy *= 0.7;
   trainingBall.speed = Math.hypot(trainingBall.vx, trainingBall.vy);
 
-  // Push ball out of entity
-  const nx = (trainingBall.x - entity.x) / d;
-  const ny = (trainingBall.y - entity.y) / d;
-  const overlap = (trainingBall.radius + entity.radius) - d;
-  trainingBall.x += nx * (overlap + 2);
-  trainingBall.y += ny * (overlap + 2);
+  // Push ball out of entity (safeNormalize guards against d≈0 NaN)
+  const [nx, ny] = safeNormalize(trainingBall.x - entity.x, trainingBall.y - entity.y);
+  if (nx !== 0 || ny !== 0) {
+    const overlap = (trainingBall.radius + entity.radius) - d;
+    trainingBall.x += nx * (overlap + 2);
+    trainingBall.y += ny * (overlap + 2);
+  }
 
   // Trigger game over for player when hp bottoms out
   if (entity === player && entity.hp < 0.5) {
@@ -1109,7 +1116,8 @@ function _updateEnemies(dt) {
 
       const overshoot = normalizeAngle(enemy.visualAngle - enemy.targetAngle);
       if (Math.abs(overshoot) > ENEMY_BAT_OVERSHOOT_DEG * Math.PI / 180 ||
-          Math.abs(enemy.swingVelocity) < 0.3) {
+          Math.abs(enemy.swingVelocity) < 0.3 ||
+          enemy.swingFrame > MAX_SWING_FRAMES) {      // safety timeout
         enemy.swingPhase   = 'return';
         enemy.swingCooldown = 1.2 + Math.random() * 0.6;
       }
@@ -1151,6 +1159,7 @@ function _updateEnemies(dt) {
         const swingSpeed = Math.abs(enemy.swingVelocity) *
           Math.hypot(contactPoint.x - enemy.x, contactPoint.y - enemy.y);
         const effectiveSpeed = Math.max(swingSpeed, 200);
+
         trainingBall.vx = hitDx * effectiveSpeed;
         trainingBall.vy = hitDy * effectiveSpeed;
         trainingBall.stopped = false;
@@ -1334,7 +1343,17 @@ function updateTraining(dt) {
   _updateBatBallCCD(dt);
   _updateBallPhysics(dt);
   _updateEnemies(dt);
-  _pushBallOutOfCharacters();   // ← new
+  _pushBallOutOfCharacters();
+
+  // NaN watchdog: if ball position/velocity corrupted, reset ball to centre
+  if (isNaN(trainingBall.x) || isNaN(trainingBall.y) ||
+      isNaN(trainingBall.vx) || isNaN(trainingBall.vy)) {
+    const mapCY = (TRN_T + TRN_B) / 2;
+    trainingBall.x = WW / 2; trainingBall.y = mapCY;
+    trainingBall.vx = 0; trainingBall.vy = 0;
+    trainingBall.speed = 0; trainingBall.stopped = true;
+  }
+
   checkRestartClick();
 
   // Bounce particles
