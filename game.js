@@ -36,12 +36,12 @@ const GOALS_TO_WIN         = 5;
 const GOAL_FREEZE_DURATION = 1.0;   // seconds
 const ENEMY_COUNT          = 3;
 const MIN_BALL_SPEED     = 0.8;   // px per frame — ball never fully stops
-const BAT_REST_LERP      = 0.08;   // how fast rest angle follows mouse
-const BAT_VISUAL_LERP    = 0.12;   // how fast visual trails rest
-const BAT_SWING_POWER    = 18;     // angular velocity on snap
-const BAT_SWING_DECAY    = 0.75;   // per-frame velocity decay during snap
-const BAT_OVERSHOOT_DEG  = 25;     // degrees past target before spring return
-const BAT_RETURN_LERP    = 0.25;   // spring return speed
+const BAT_REST_LERP      = 0.18;   // was 0.08 — faster rest-angle tracking, less floaty
+const BAT_VISUAL_LERP    = 0.22;   // was 0.12 — tighter visual trail
+const BAT_SWING_POWER    = 9;      // was 18 — half the snap velocity
+const BAT_SWING_DECAY    = 0.68;   // was 0.75 — swing dies out faster
+const BAT_OVERSHOOT_DEG  = 12;     // was 25 — much smaller overshoot
+const BAT_RETURN_LERP    = 0.18;   // was 0.25 — gentler spring return
 
 // ── Input ────────────────────────────────────────
 const keys  = {};
@@ -716,7 +716,7 @@ function _updateBatBallCCD(dt) {
 
   // ── CCD — only active during snap frames 2–8 ──
   const ccdActive = (bat.swingPhase === 'snap') &&
-                    (bat.swingFrame >= 2) && (bat.swingFrame <= 8);
+                    (bat.swingFrame >= 2) && (bat.swingFrame <= 10);
 
   const currSeg  = _getBatSegment(bat.visualAngle);
   const currBase = { x: currSeg.bx, y: currSeg.by };
@@ -796,8 +796,11 @@ function _updateBatBallCCD(dt) {
       const swingSpeed     = Math.abs(bat.swingVelocity) * pivotDist;
       const effectiveSpeed = Math.max(swingSpeed, 120);
 
-      trainingBall.vx = hitDx * effectiveSpeed * BAT_POWER_MULT;
-      trainingBall.vy = hitDy * effectiveSpeed * BAT_POWER_MULT;
+      // Dampen 40% if bat has genuinely overshot its target (past BAT_OVERSHOOT_DEG boundary)
+      const batOvershoot = Math.abs(normalizeAngle(bat.visualAngle - bat.targetAngle));
+      const overshootMult = batOvershoot > BAT_OVERSHOOT_DEG * Math.PI / 180 ? 0.6 : 1.0;
+      trainingBall.vx = hitDx * effectiveSpeed * BAT_POWER_MULT * overshootMult;
+      trainingBall.vy = hitDy * effectiveSpeed * BAT_POWER_MULT * overshootMult;
       const launchSpeed = Math.hypot(trainingBall.vx, trainingBall.vy);
       if (launchSpeed > MAX_BALL_SPEED) {
         trainingBall.vx *= MAX_BALL_SPEED / launchSpeed;
@@ -1106,7 +1109,7 @@ function _updateEnemies(dt) {
 
     // ── CCD during snap frames 2–8 ──
     const ccdActive = enemy.swingPhase === 'snap' &&
-                      enemy.swingFrame >= 2 && enemy.swingFrame <= 8;
+                      enemy.swingFrame >= 2 && enemy.swingFrame <= 10;
     if (ccdActive && !enemy.hitThisSwing) {
       const currSeg = _getEnemyBatSegment(enemy, enemy.visualAngle);
       const hb = trainingBall.x, hy = trainingBall.y;
