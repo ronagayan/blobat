@@ -387,6 +387,28 @@ function applyBallDamage(entity) {
   return true;
 }
 
+function _pushBallOutOfCharacters() {
+  if (trainingBall.stopped) return;
+  const chars = player.alive ? [player, ...trnEnemies] : [...trnEnemies];
+  for (const ch of chars) {
+    if (ch.splatTimer >= 0) continue; // skip dying enemies (player has no splatTimer — handled above)
+    const dx = trainingBall.x - ch.x;
+    const dy = trainingBall.y - ch.y;
+    const d  = Math.hypot(dx, dy);
+    const minDist = trainingBall.radius + ch.radius;
+    if (d < minDist && d > 0.01) {
+      const nx = dx / d, ny = dy / d;
+      // Push ball to surface + 2px gap (no damage)
+      trainingBall.x = ch.x + nx * (minDist + 2);
+      trainingBall.y = ch.y + ny * (minDist + 2);
+      // Small outward impulse so ball escapes
+      trainingBall.vx += nx * 2.0;
+      trainingBall.vy += ny * 2.0;
+      trainingBall.speed = Math.hypot(trainingBall.vx, trainingBall.vy);
+    }
+  }
+}
+
 function getBatTip() {
   const tipDist = player.radius + 10 + bat.length;
   return {
@@ -1237,6 +1259,7 @@ function updateTraining(dt) {
   _updateBatBallCCD(dt);
   _updateBallPhysics(dt);
   _updateEnemies(dt);
+  _pushBallOutOfCharacters();   // ← new
   checkRestartClick();
 
   // Bounce particles
