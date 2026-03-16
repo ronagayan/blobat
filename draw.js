@@ -403,9 +403,7 @@ function drawTraining() {
 
       // Bat (clay styled)
       if (enemy.splatTimer < 0) {
-        const swingAngle = enemy.swingProgress >= 0
-          ? enemy.swingStartAngle + enemy.swingDir * (enemy.swingProgress * Math.PI * 2 / 3)
-          : enemy.angle;
+        const swingAngle = enemy.visualAngle;
         ctx.save();
         ctx.translate(enemy.x, enemy.y);
         ctx.rotate(swingAngle);

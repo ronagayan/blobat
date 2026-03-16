@@ -535,9 +535,11 @@ function respawnAfterGoal() {
     e.vx = 0; e.vy = 0;
     e.hp = ENEMY_MAX_HP;
     e.splatTimer = -1;
-    e.swingProgress = -1;
+    e.swingPhase    = 'idle';
+    e.swingFrame    = 0;
     e.swingCooldown = 0;
-    e.hitThisSwing = false;
+    e.hitThisSwing  = false;
+    e.idleTimer     = 0;
   }
   if (!player.alive) {
     player.x = WW * 0.28; player.y = mapCY;
@@ -927,17 +929,29 @@ function _updatePlayer(dt) {
 
 // ── Enemy AI + ball damage ───────────────────────
 function _updateEnemies(dt) {
-  // Possession heuristic (hysteresis: only change when |vx| > 80)
-  if      (trainingBall.vx < -80) redPossession = true;
-  else if (trainingBall.vx >  80) redPossession = false;
-
   // ── Ball damage ──
   applyBallDamage(player);
-  for (const enemy of trnEnemies) {
-    if (enemy.splatTimer < 0) applyBallDamage(enemy);
+  for (const e of trnEnemies) {
+    if (e.swingPhase !== 'snap' && e.splatTimer < 0) applyBallDamage(e);
   }
 
-  // ── Enemy AI update ──
+  // ── Assign roles by distance each frame ──
+  const bx = trainingBall.x, by = trainingBall.y;
+  const alive = trnEnemies.filter(e => e.splatTimer < 0);
+  let attacker = null, goalkeeper = null, support = null;
+  if (alive.length > 0) {
+    const sorted = alive.slice().sort((a, b) =>
+      Math.hypot(a.x-bx, a.y-by) - Math.hypot(b.x-bx, b.y-by));
+    attacker = sorted[0];
+    if (sorted.length >= 2) {
+      const others = sorted.slice(1).sort((a, b) =>
+        Math.hypot(b.x-attacker.x, b.y-attacker.y) -
+        Math.hypot(a.x-attacker.x, a.y-attacker.y));
+      goalkeeper = others[0];
+      support    = others.length > 1 ? others[1] : null;
+    }
+  }
+
   for (const enemy of trnEnemies) {
     if (enemy.flashTimer > 0) enemy.flashTimer -= dt;
     if (enemy.splatTimer >= 0) {
@@ -945,129 +959,165 @@ function _updateEnemies(dt) {
       continue;
     }
 
-    // State priority: SWING_ACTIVE > IDLE > DODGE > SWING_INIT > CHASE
-    if (enemy.swingProgress >= 0) {
-      // SWING_ACTIVE
-      enemy.swingProgress += dt / 0.4;
-      if (enemy.swingProgress >= 1) {
-        enemy.swingProgress = -1;
-        enemy.swingCooldown = 1.5 + Math.random() * 0.5;
-      } else {
-        const swingAngle = enemy.swingStartAngle + enemy.swingDir * (enemy.swingProgress * (Math.PI * 2 / 3));
-        const currSeg = _getEnemyBatSegment(enemy, swingAngle);
-        // CCD bat-ball check
-        if (!enemy.hitThisSwing) {
-          const bx = trainingBall.x, by = trainingBall.y;
-          const hitRadius = trainingBall.radius + ENEMY_BAT_WIDTH;
-          let contactPoint = null;
-          const currTest = segmentCircleTest(currSeg.bx, currSeg.by, currSeg.tx, currSeg.ty, bx, by, hitRadius);
-          if (currTest.hit) contactPoint = currTest.closest;
-          if (!contactPoint) {
-            const e1 = segmentCircleTest(enemy.prevBatBase.x, enemy.prevBatBase.y, currSeg.bx, currSeg.by, bx, by, hitRadius);
-            if (e1.hit) contactPoint = e1.closest;
-          }
-          if (!contactPoint) {
-            const e2 = segmentCircleTest(enemy.prevBatTip.x, enemy.prevBatTip.y, currSeg.tx, currSeg.ty, bx, by, hitRadius);
-            if (e2.hit) contactPoint = e2.closest;
-          }
-          if (contactPoint) {
-            let hitDx = bx - contactPoint.x;
-            let hitDy = by - contactPoint.y;
-            const hitLen = Math.hypot(hitDx, hitDy);
-            if (hitLen > 0.01) { hitDx /= hitLen; hitDy /= hitLen; }
-            else { hitDx = Math.cos(swingAngle); hitDy = Math.sin(swingAngle); }
-            const swingSpeed = 300;
-            trainingBall.vx = hitDx * swingSpeed;
-            trainingBall.vy = hitDy * swingSpeed;
-            trainingBall.stopped = false;
-            trainingBall.speed = Math.hypot(trainingBall.vx, trainingBall.vy);
-            trainingBall.squash = 0.75; trainingBall.squashTimer = 0.13;
-            trainingBall.squashAngle = Math.atan2(hitDy, hitDx);
-            trainingBall.x = contactPoint.x + hitDx * (trainingBall.radius + ENEMY_BAT_WIDTH + 2);
-            trainingBall.y = contactPoint.y + hitDy * (trainingBall.radius + ENEMY_BAT_WIDTH + 2);
-            enemy.hitThisSwing = true;
-          }
-        }
-        enemy.prevBatBase = { x: currSeg.bx, y: currSeg.by };
-        enemy.prevBatTip  = { x: currSeg.tx, y: currSeg.ty };
-        enemy.angle = swingAngle;
-      }
-    } else if (trainingBall.stopped) {
-      // IDLE
-      enemy.vx = 0; enemy.vy = 0;
-    } else if (trainingBall.speed > 200) {
-      // DODGE: sidestep perpendicular to ball velocity, away from ball
-      const bvLen = Math.hypot(trainingBall.vx, trainingBall.vy);
-      const perpX = -trainingBall.vy / bvLen;
-      const perpY =  trainingBall.vx / bvLen;
-      const dot = perpX * (enemy.x - trainingBall.x) + perpY * (enemy.y - trainingBall.y);
-      const side = dot >= 0 ? 1 : -1;
-      enemy.vx = perpX * side * ENEMY_DODGE_SPEED;
-      enemy.vy = perpY * side * ENEMY_DODGE_SPEED;
-    } else {
-      const idx = trnEnemies.indexOf(enemy);
-      const edx = trainingBall.x - enemy.x, edy = trainingBall.y - enemy.y;
-      const ed  = Math.hypot(edx, edy);
-      const mapCY = (TRN_T + TRN_B) / 2;
+    const edx = bx - enemy.x, edy = by - enemy.y;
+    const ed  = Math.hypot(edx, edy);
 
-      if (redPossession) {
-        // RED attacking — aim at GATE_LEFT
-        if (idx === 0) {
-          // Attacker: chase ball; swing aims toward GATE_LEFT
-          if (ed < 150 && enemy.swingCooldown <= 0 && !enemy.hitThisSwing) {
-            // SWING_INIT — aim toward GATE_LEFT
-            enemy.swingStartAngle = Math.atan2(
-              GATE_LEFT.y + GATE_LEFT.h / 2 - enemy.y,
-              GATE_LEFT.x + GATE_LEFT.w / 2 - enemy.x
-            );
-            const toPlayer = Math.atan2(player.y - enemy.y, player.x - enemy.x);
-            const cwMid  = enemy.swingStartAngle + Math.PI * (1 / 3);
-            const ccwMid = enemy.swingStartAngle - Math.PI * (1 / 3);
-            enemy.swingDir = Math.abs(Math.atan2(Math.sin(toPlayer - cwMid), Math.cos(toPlayer - cwMid))) <
-                             Math.abs(Math.atan2(Math.sin(toPlayer - ccwMid), Math.cos(toPlayer - ccwMid))) ? 1 : -1;
-            enemy.swingProgress = 0;
-            enemy.hitThisSwing  = false;
-            enemy.vx = 0; enemy.vy = 0;
-            const seg0 = _getEnemyBatSegment(enemy, enemy.swingStartAngle);
-            enemy.prevBatBase = { x: seg0.bx, y: seg0.by };
-            enemy.prevBatTip  = { x: seg0.tx, y: seg0.ty };
-          } else if (ed > 0.1) {
-            // CHASE ball
-            enemy.vx = (edx / ed) * ENEMY_SPEED;
-            enemy.vy = (edy / ed) * ENEMY_SPEED;
-            enemy.angle = Math.atan2(edy, edx);
-          }
-        } else {
-          // Support: move to flanking positions
-          const supportY = idx === 1 ? mapCY - 120 : mapCY + 120;
-          const tx = WW * 0.6, ty = supportY;
-          const dx = tx - enemy.x, dy = ty - enemy.y;
-          const d  = Math.hypot(dx, dy);
-          if (d > 10) { enemy.vx = (dx / d) * ENEMY_SPEED; enemy.vy = (dy / d) * ENEMY_SPEED; }
-          else        { enemy.vx = 0; enemy.vy = 0; }
-        }
-      } else {
-        // BLUE attacking — RED defending GATE_RIGHT
-        if (idx === 0) {
-          // Goalkeeper: stay between ball and GATE_RIGHT
-          const gateCx = GATE_RIGHT.x + GATE_RIGHT.w / 2;
-          const gateCy = GATE_RIGHT.y + GATE_RIGHT.h / 2;
-          const targetX = clamp(trainingBall.x * 0.3 + gateCx * 0.7, TRN_R - 200, TRN_R - 120);
-          const targetY = clamp(trainingBall.y, GATE_RIGHT.y - 60, GATE_RIGHT.y + GATE_RIGHT.h + 60);
-          const dx = targetX - enemy.x, dy = targetY - enemy.y;
-          const d  = Math.hypot(dx, dy);
-          if (d > 10) { enemy.vx = (dx / d) * ENEMY_SPEED; enemy.vy = (dy / d) * ENEMY_SPEED; }
-          else        { enemy.vx = 0; enemy.vy = 0; }
-        } else {
-          // Interceptors: steer toward predicted ball position
-          const ix = clamp(trainingBall.x + trainingBall.vx * 0.3, TRN_L + 40, TRN_R - 40);
-          const iy = clamp(trainingBall.y + trainingBall.vy * 0.3, TRN_T + 40, TRN_B - 40);
-          const dx = ix - enemy.x, dy = iy - enemy.y;
-          const d  = Math.hypot(dx, dy);
-          if (d > 10) { enemy.vx = (dx / d) * ENEMY_SPEED; enemy.vy = (dy / d) * ENEMY_SPEED; }
-          else        { enemy.vx = 0; enemy.vy = 0; }
-        }
+    // ── Determine ideal bat angle for this role ──
+    let idealAngle;
+    if (enemy === attacker) {
+      // Aim swing toward GATE_LEFT (enemy goal = BLUE's net)
+      idealAngle = Math.atan2(
+        GATE_LEFT.y + GATE_LEFT.h / 2 - enemy.y,
+        GATE_LEFT.x + GATE_LEFT.w / 2 - enemy.x
+      );
+    } else {
+      // Goalkeeper and support: face ball
+      idealAngle = Math.atan2(edy, edx);
+    }
+
+    // ── Rubber-band bat update ──
+    if (enemy.swingPhase === 'idle') {
+      enemy.restAngle   = lerpAngle(enemy.restAngle,   idealAngle,        BAT_REST_LERP);
+      enemy.visualAngle = lerpAngle(enemy.visualAngle, enemy.restAngle,   BAT_VISUAL_LERP);
+
+      // Trigger snap when visual has caught up AND ball in range AND cooldown done
+      const angleLag  = Math.abs(normalizeAngle(enemy.restAngle - enemy.visualAngle));
+      const inRange   = ed < (enemy === attacker ? 100 : 150);
+      if (inRange && enemy.swingCooldown <= 0 && !enemy.hitThisSwing &&
+          angleLag < 15 * Math.PI / 180) {
+        const angDist      = normalizeAngle(idealAngle - enemy.visualAngle);
+        enemy.swingVelocity = angDist * BAT_SWING_POWER;
+        enemy.targetAngle  = idealAngle;
+        enemy.swingPhase   = 'snap';
+        enemy.swingFrame   = 0;
+        enemy.hitThisSwing = false;
+        const seg0 = _getEnemyBatSegment(enemy, enemy.visualAngle);
+        enemy.prevBatBase = { x: seg0.bx, y: seg0.by };
+        enemy.prevBatTip  = { x: seg0.tx, y: seg0.ty };
       }
+
+    } else if (enemy.swingPhase === 'snap') {
+      enemy.swingFrame++;
+      enemy.visualAngle    += enemy.swingVelocity * dt;
+      enemy.swingVelocity  *= Math.pow(BAT_SWING_DECAY, dt * 60);
+
+      const overshoot = normalizeAngle(enemy.visualAngle - enemy.targetAngle);
+      if (Math.abs(overshoot) > BAT_OVERSHOOT_DEG * Math.PI / 180 ||
+          Math.abs(enemy.swingVelocity) < 0.3) {
+        enemy.swingPhase   = 'return';
+        enemy.swingCooldown = 1.2 + Math.random() * 0.6;
+      }
+
+    } else { // 'return'
+      enemy.restAngle   = lerpAngle(enemy.restAngle,   idealAngle,      BAT_REST_LERP);
+      enemy.visualAngle = lerpAngle(enemy.visualAngle, enemy.restAngle, BAT_RETURN_LERP);
+      if (Math.abs(normalizeAngle(enemy.visualAngle - enemy.restAngle)) < 0.05) {
+        enemy.swingPhase   = 'idle';
+        enemy.hitThisSwing = false;
+      }
+    }
+
+    // ── CCD during snap frames 2–8 ──
+    const ccdActive = enemy.swingPhase === 'snap' &&
+                      enemy.swingFrame >= 2 && enemy.swingFrame <= 8;
+    if (ccdActive && !enemy.hitThisSwing) {
+      const currSeg = _getEnemyBatSegment(enemy, enemy.visualAngle);
+      const hb = trainingBall.x, hy = trainingBall.y;
+      const hitRadius = trainingBall.radius + ENEMY_BAT_WIDTH;
+      let contactPoint = null;
+
+      const ct = segmentCircleTest(currSeg.bx, currSeg.by, currSeg.tx, currSeg.ty, hb, hy, hitRadius);
+      if (ct.hit) contactPoint = ct.closest;
+      if (!contactPoint) {
+        const e1 = segmentCircleTest(enemy.prevBatBase.x, enemy.prevBatBase.y, currSeg.bx, currSeg.by, hb, hy, hitRadius);
+        if (e1.hit) contactPoint = e1.closest;
+      }
+      if (!contactPoint) {
+        const e2 = segmentCircleTest(enemy.prevBatTip.x, enemy.prevBatTip.y, currSeg.tx, currSeg.ty, hb, hy, hitRadius);
+        if (e2.hit) contactPoint = e2.closest;
+      }
+      if (contactPoint) {
+        let hitDx = hb - contactPoint.x, hitDy = hy - contactPoint.y;
+        const hitLen = Math.hypot(hitDx, hitDy);
+        if (hitLen > 0.01) { hitDx /= hitLen; hitDy /= hitLen; }
+        else { hitDx = Math.cos(enemy.visualAngle); hitDy = Math.sin(enemy.visualAngle); }
+
+        const swingSpeed = Math.abs(enemy.swingVelocity) *
+          Math.hypot(contactPoint.x - enemy.x, contactPoint.y - enemy.y);
+        const effectiveSpeed = Math.max(swingSpeed, 200);
+        trainingBall.vx = hitDx * effectiveSpeed;
+        trainingBall.vy = hitDy * effectiveSpeed;
+        trainingBall.stopped = false;
+        trainingBall.speed = Math.hypot(trainingBall.vx, trainingBall.vy);
+        trainingBall.squash = 0.75; trainingBall.squashTimer = 0.13;
+        trainingBall.squashAngle = Math.atan2(hitDy, hitDx);
+        trainingBall.x = contactPoint.x + hitDx * (trainingBall.radius + ENEMY_BAT_WIDTH + 2);
+        trainingBall.y = contactPoint.y + hitDy * (trainingBall.radius + ENEMY_BAT_WIDTH + 2);
+        enemy.hitThisSwing = true;
+      }
+
+      enemy.prevBatBase = { x: currSeg.bx, y: currSeg.by };
+      enemy.prevBatTip  = { x: currSeg.tx, y: currSeg.ty };
+    }
+
+    // Body faces bat direction
+    enemy.angle = enemy.visualAngle;
+
+    // ── Role-based movement ──
+    const isSwinging = enemy.swingPhase === 'snap';
+    if (isSwinging) {
+      enemy.vx = 0; enemy.vy = 0; // freeze during snap
+
+    } else if (enemy === attacker) {
+      if (enemy.hitThisSwing && enemy.swingCooldown > 0.8) {
+        // Back off after swing
+        if (ed > 0.1) {
+          enemy.vx = -(edx / ed) * ENEMY_SPEED * 0.4;
+          enemy.vy = -(edy / ed) * ENEMY_SPEED * 0.4;
+        }
+      } else if (ed > 0.1) {
+        // Chase ball
+        enemy.vx = (edx / ed) * ENEMY_SPEED;
+        enemy.vy = (edy / ed) * ENEMY_SPEED;
+      }
+
+    } else if (enemy === goalkeeper) {
+      // Position between ball and GATE_RIGHT
+      const gateCx = GATE_RIGHT.x + GATE_RIGHT.w / 2;
+      const gateCy = GATE_RIGHT.y + GATE_RIGHT.h / 2;
+      const targetX = clamp(bx * 0.3 + gateCx * 0.7, TRN_R - 200, TRN_R - 120);
+      const targetY = clamp(by, GATE_RIGHT.y - 60, GATE_RIGHT.y + GATE_RIGHT.h + 60);
+      const dx = targetX - enemy.x, dy = targetY - enemy.y;
+      const d  = Math.hypot(dx, dy);
+      if (d > 10) { enemy.vx = (dx / d) * ENEMY_SPEED; enemy.vy = (dy / d) * ENEMY_SPEED; }
+      else        { enemy.vx = 0; enemy.vy = 0; }
+
+    } else if (enemy === support) {
+      // Move toward predicted ball position (0.5s lookahead)
+      const px = clamp(bx + trainingBall.vx * 0.5, TRN_L + 40, TRN_R - 40);
+      const py = clamp(by + trainingBall.vy * 0.5, TRN_T + 40, TRN_B - 40);
+      const dx = px - enemy.x, dy = py - enemy.y;
+      const d  = Math.hypot(dx, dy);
+      if (d > 10) { enemy.vx = (dx / d) * ENEMY_SPEED; enemy.vy = (dy / d) * ENEMY_SPEED; }
+      else        { enemy.vx = 0; enemy.vy = 0; }
+
+    } else {
+      // No role — patrol toward ball slowly
+      if (ed > 0.1) {
+        enemy.vx = (edx / ed) * ENEMY_SPEED * 0.5;
+        enemy.vy = (edy / ed) * ENEMY_SPEED * 0.5;
+      }
+    }
+
+    // Anti-freeze patrol: if velocity near zero for > 0.5s, force toward ball
+    if (Math.hypot(enemy.vx, enemy.vy) < 5) {
+      enemy.idleTimer += dt;
+      if (enemy.idleTimer > 0.5 && ed > 0.1) {
+        enemy.vx = (edx / ed) * ENEMY_SPEED * 0.5;
+        enemy.vy = (edy / ed) * ENEMY_SPEED * 0.5;
+      }
+    } else {
+      enemy.idleTimer = 0;
     }
 
     // Wall repulsion
@@ -1121,9 +1171,22 @@ function _updateEnemies(dt) {
       enemy.y             = enemy.startY;
       enemy.vx            = 0; enemy.vy = 0;
       enemy.hp            = ENEMY_MAX_HP;
-      enemy.swingProgress = -1;
+      enemy.swingPhase    = 'idle';
+      enemy.swingFrame    = 0;
       enemy.swingCooldown = 0;
       enemy.hitThisSwing  = false;
+      enemy.idleTimer     = 0;
+      // Reset bat angles to face ball from spawn position
+      const spawnAngle = Math.atan2(by - enemy.startY, bx - enemy.startX);
+      enemy.restAngle   = spawnAngle;
+      enemy.visualAngle = spawnAngle;
+      enemy.angle       = spawnAngle;
+      enemy.swingVelocity = 0;
+      enemy.targetAngle   = spawnAngle;
+      // Reset bat segment positions to avoid false CCD hit after teleport
+      const seg0 = _getEnemyBatSegment(enemy, spawnAngle);
+      enemy.prevBatBase = { x: seg0.bx, y: seg0.by };
+      enemy.prevBatTip  = { x: seg0.tx, y: seg0.ty };
     }
   }
 }
