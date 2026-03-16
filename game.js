@@ -466,14 +466,17 @@ function arrivalSteer(enemy, targetX, targetY, slowRadius) {
   const sr = slowRadius !== undefined ? slowRadius : 80;
   const dx = targetX - enemy.x, dy = targetY - enemy.y;
   const d  = Math.hypot(dx, dy);
-  if (d < 1) {
-    enemy.vx = lerp(enemy.vx, 0, 0.15);
-    enemy.vy = lerp(enemy.vy, 0, 0.15);
+  if (d < 0.5) {
+    // At/past target — nudge randomly so enemy doesn't freeze at target point
+    enemy.vx += (Math.random() - 0.5) * ENEMY_SPEED * 0.1;
+    enemy.vy += (Math.random() - 0.5) * ENEMY_SPEED * 0.1;
     return;
   }
   const desiredSpeed = d < sr ? ENEMY_SPEED * (d / sr) : ENEMY_SPEED;
-  enemy.vx = lerp(enemy.vx, (dx / d) * desiredSpeed, 0.15);
-  enemy.vy = lerp(enemy.vy, (dy / d) * desiredSpeed, 0.15);
+  // Minimum speed floor: enemy never fully stops due to slowRadius scaling
+  const finalSpeed = Math.max(desiredSpeed, ENEMY_SPEED * 0.15);
+  enemy.vx = lerp(enemy.vx, (dx / d) * finalSpeed, 0.15);
+  enemy.vy = lerp(enemy.vy, (dy / d) * finalSpeed, 0.15);
 }
 
 function spawnAllEnemies(mapCY) {
@@ -505,6 +508,7 @@ function spawnAllEnemies(mapCY) {
       prevBatTip:  { x: seg.tx, y: seg.ty },
       hitThisSwing: false,
       idleTimer: 0,
+      lastCheckX: sx, lastCheckY: sy,
       color: '#E74C3C',
     });
   }
@@ -542,13 +546,14 @@ let playerRespawnTimer = 0;
 let damageNumbers = [];
 let enemyRoleTimer = 0;
 let cachedAttacker = null, cachedGoalkeeper = null, cachedSupport = null;
+let frameCount = 0;
 
 function restart() {
   gameState = 'playing'; winner = null;
   scores = { BLUE: 0, RED: 0 };
   scoreAnimBlue = 0; scoreAnimRed = 0;
   goalFreezeTimer = 0; playerRespawnTimer = 0;
-  damageNumbers = [];
+  damageNumbers = []; frameCount = 0;
   initTraining();
 }
 
@@ -1181,7 +1186,14 @@ function _updateEnemies(dt) {
     // ── Role-based movement ──
     const isSwinging = enemy.swingPhase === 'snap';
     if (isSwinging) {
-      enemy.vx = 0; enemy.vy = 0; // freeze during snap
+      // Fix C: slow drift toward ball during snap instead of full stop
+      if (ed > 0.1) {
+        enemy.vx = lerp(enemy.vx, (edx / ed) * ENEMY_SPEED * 0.2, 0.2);
+        enemy.vy = lerp(enemy.vy, (edy / ed) * ENEMY_SPEED * 0.2, 0.2);
+      } else {
+        enemy.vx = lerp(enemy.vx, 0, 0.2);
+        enemy.vy = lerp(enemy.vy, 0, 0.2);
+      }
 
     } else if (enemy === attacker) {
       if (enemy.hitThisSwing && enemy.swingCooldown > 0.8) {
@@ -1268,7 +1280,40 @@ function _updateEnemies(dt) {
     enemy.y = clamp(enemy.y, TRN_T + enemy.radius, TRN_B - enemy.radius);
     pushOutOfTrainingRects(enemy);
 
+    // Fix B: push enemy out of ball body (position correction only — no velocity change)
+    if (!trainingBall.stopped) {
+      const bdx = enemy.x - trainingBall.x;
+      const bdy = enemy.y - trainingBall.y;
+      const bd  = Math.hypot(bdx, bdy);
+      const bMin = enemy.radius + trainingBall.radius;
+      if (bd < bMin && bd > 0.001) {
+        const overlap = bMin - bd;
+        enemy.x += (bdx / bd) * overlap;
+        enemy.y += (bdy / bd) * overlap;
+        // Give ball a gentle push away from enemy (velocity only, not teleport)
+        trainingBall.vx -= (bdx / bd) * overlap * 0.5;
+        trainingBall.vy -= (bdy / bd) * overlap * 0.5;
+      } else if (bd <= 0.001) {
+        enemy.x += enemy.radius * 0.5; // exact coincidence: nudge enemy right
+      }
+    }
+
     if (enemy.swingCooldown > 0) enemy.swingCooldown -= dt;
+
+    // Fix D: stuck detector — every 30 frames check movement; escape if stuck
+    if (frameCount % 30 === 0) {
+      enemy.lastCheckX = enemy.x;
+      enemy.lastCheckY = enemy.y;
+    }
+    if (frameCount % 30 === 29) {
+      const moved = Math.hypot(enemy.x - enemy.lastCheckX, enemy.y - enemy.lastCheckY);
+      if (moved < 5 && ed > enemy.radius + trainingBall.radius + 5) {
+        // Stuck but not actively pressing the ball — escape in random direction
+        const escapeAngle = Math.random() * Math.PI * 2;
+        enemy.x += Math.cos(escapeAngle) * 20;
+        enemy.y += Math.sin(escapeAngle) * 20;
+      }
+    }
   }
 
   // Respawn dead enemies in-place
@@ -1284,6 +1329,8 @@ function _updateEnemies(dt) {
       enemy.swingCooldown = 0;
       enemy.hitThisSwing  = false;
       enemy.idleTimer     = 0;
+      enemy.lastCheckX    = enemy.startX;
+      enemy.lastCheckY    = enemy.startY;
       // Reset bat angles to face ball from spawn position
       const spawnAngle = Math.atan2(by - enemy.startY, bx - enemy.startX);
       enemy.restAngle   = spawnAngle;
@@ -1338,6 +1385,7 @@ function updateTraining(dt) {
     return;  // ← skips all game-update calls below
   }
 
+  frameCount++;
   updateTrainingCamera();
   _updatePlayer(dt);
   _updateBatBallCCD(dt);
