@@ -223,6 +223,7 @@ const bat = {
   swingVelocity: 0,
   swingPhase: 'idle',      // 'idle' | 'snap' | 'return'
   swingFrame: 0,
+  squashTimer: 0,       // frames remaining for hit squash
   targetAngle: 0,
   visualScaleX: 1.0,
   visualScaleY: 1.0,
@@ -671,11 +672,6 @@ function _updateBatBallCCD(dt) {
     bat.restAngle   = lerpAngle(bat.restAngle,   mouseAngle,    BAT_REST_LERP);
     bat.visualAngle = lerpAngle(bat.visualAngle, bat.restAngle, BAT_VISUAL_LERP);
 
-    // Wind-up tension: slight stretch proportional to angular lag
-    const lag = Math.abs(normalizeAngle(bat.restAngle - bat.visualAngle));
-    bat.visualScaleX = 1.0 + Math.min(lag, 0.3) * 0.5; // max ~1.15
-    bat.visualScaleY = 1.0;
-
     // Trigger snap on click
     if (mouse.justDown && !player.rolling) {
       const angDist = normalizeAngle(mouseAngle - bat.visualAngle);
@@ -690,10 +686,6 @@ function _updateBatBallCCD(dt) {
     bat.swingFrame++;
     bat.visualAngle   += bat.swingVelocity * dt;
     bat.swingVelocity *= Math.pow(BAT_SWING_DECAY, dt * 60);
-
-    // Impact squash
-    bat.visualScaleX = 1.3;
-    bat.visualScaleY = 0.85;
 
     // Transition to return on overshoot or velocity decay
     const overshoot = normalizeAngle(bat.visualAngle - bat.targetAngle);
@@ -713,6 +705,19 @@ function _updateBatBallCCD(dt) {
       bat.hitThisSwing = false; // allow next swing
     }
   }
+
+  // Squash-on-hit: count down, apply scale; otherwise neutral
+  // Note: squashTimer takes priority over the return-phase lerp while counting down.
+  // Once squashTimer reaches 0 and phase is 'return', the return-phase lerp takes over.
+  if (bat.squashTimer > 0) {
+    bat.squashTimer--;
+    bat.visualScaleX = 1.2;
+    bat.visualScaleY = 0.9;
+  } else if (bat.swingPhase !== 'return') {
+    bat.visualScaleX = 1.0;
+    bat.visualScaleY = 1.0;
+  }
+  // (in 'return' phase with squashTimer==0, the return block's lerp back to 1.0 applies)
 
   // ── CCD — only active during snap frames 2–8 ──
   const ccdActive = (bat.swingPhase === 'snap') &&
@@ -810,6 +815,7 @@ function _updateBatBallCCD(dt) {
       trainingBall.speed = Math.hypot(trainingBall.vx, trainingBall.vy);
 
       bat.hitThisSwing = true;
+      bat.squashTimer = 4; // 4 frames of squash on impact
       bat.hitCooldown  = 0.2;
       trainingBall.x = contactPoint.x + hitDx * (trainingBall.radius + bat.width + 2);
       trainingBall.y = contactPoint.y + hitDy * (trainingBall.radius + bat.width + 2);
@@ -839,7 +845,7 @@ function _updateBatBallCCD(dt) {
 
   // Track previous visual angles for motion blur (max 3)
   bat.prevVisualAngles.unshift(bat.visualAngle);
-  if (bat.prevVisualAngles.length > 3) bat.prevVisualAngles.pop();
+  if (bat.prevVisualAngles.length > 2) bat.prevVisualAngles.pop();
 
   // Store for next frame's CCD
   bat.prevBase  = { x: currBase.x, y: currBase.y };
