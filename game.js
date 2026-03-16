@@ -428,6 +428,30 @@ function getBatBase() {
 // ── Enemies ──────────────────────────────────────
 let trnEnemies = [];
 
+function _resolveEntitySeparation() {
+  // Build list: player (if alive) + alive enemies
+  const entities = [];
+  if (player.alive) entities.push(player);
+  for (const e of trnEnemies) {
+    if (e.splatTimer < 0) entities.push(e);
+  }
+  // Positional push-apart for every pair
+  for (let i = 0; i < entities.length; i++) {
+    for (let j = i + 1; j < entities.length; j++) {
+      const a = entities[i], b = entities[j];
+      const dx = a.x - b.x, dy = a.y - b.y;
+      const d  = Math.hypot(dx, dy);
+      const minSep = a.radius + b.radius + 10;
+      if (d < minSep && d > 0.01) {
+        const push = (minSep - d) * 0.5;
+        const nx = dx / d, ny = dy / d;
+        a.x += nx * push; a.y += ny * push;
+        b.x -= nx * push; b.y -= ny * push;
+      }
+    }
+  }
+}
+
 function spawnAllEnemies(mapCY) {
   const starts = [
     { x: WW * 0.82, y: mapCY },
@@ -958,6 +982,8 @@ function _updatePlayer(dt) {
 
 // ── Enemy AI + ball damage ───────────────────────
 function _updateEnemies(dt) {
+  _resolveEntitySeparation();
+
   // ── Ball damage ──
   applyBallDamage(player);
   for (const e of trnEnemies) {
@@ -1167,18 +1193,7 @@ function _updateEnemies(dt) {
       }
     }
 
-    // Separation between enemies
-    for (let j = 0; j < trnEnemies.length; j++) {
-      if (trnEnemies[j] === enemy || trnEnemies[j].splatTimer >= 0) continue;
-      const sep = Math.hypot(enemy.x - trnEnemies[j].x, enemy.y - trnEnemies[j].y);
-      if (sep < 80 && sep > 0.1) {
-        const push = (80 - sep) * 0.5;
-        const nx = (enemy.x - trnEnemies[j].x) / sep;
-        const ny = (enemy.y - trnEnemies[j].y) / sep;
-        enemy.vx += nx * push;
-        enemy.vy += ny * push;
-      }
-    }
+
 
     // Friction + integrate
     enemy.vx *= Math.pow(0.85, dt * 60);
