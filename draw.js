@@ -458,6 +458,15 @@ function drawTraining() {
     const pbsy = player.rolling ? 0.8 : 1;
     drawBlobBody(player.x, player.y, player.radius, pbsx, pbsy, myPlayerColor);
 
+    // Flash overlay on damage (matches enemy flash)
+    if (player.flashTimer > 0) {
+      ctx.save();
+      ctx.globalAlpha = (player.flashTimer / 0.2) * 0.55;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+
     // ── Bat (clay styled) ──
     if (!player.rolling) {
       // Motion blur trail during snap

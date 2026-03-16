@@ -353,6 +353,8 @@ function _getEnemyBatSegment(enemy, angle) {
 // ── Ball damage ──────────────────────────────────
 function applyBallDamage(entity) {
   if (trainingBall.stopped) return false;
+  // Skip dead or invulnerable player (prevents respawnTimer reset loops)
+  if (entity === player && (!player.alive || player.invulnTimer > 0)) return false;
   const d = Math.hypot(trainingBall.x - entity.x, trainingBall.y - entity.y);
   if (d >= trainingBall.radius + entity.radius) return false;
   if (trainingBall.speed <= 30) return false;
@@ -1422,7 +1424,8 @@ function updateTraining(dt) {
   }
 
   if (shakeTimer > 0) shakeTimer -= dt;
-  if (player.flashTimer > 0) player.flashTimer -= dt;
+  if (player.flashTimer  > 0) player.flashTimer  -= dt;
+  if (player.invulnTimer > 0) player.invulnTimer = Math.max(0, player.invulnTimer - dt);
 
   // Momentum bar
   const actualMomentum = Math.min(trainingBall.speed / TRN_MAX_SPEED * 100, 100);
@@ -1654,7 +1657,8 @@ function drawTrainingHUD() {
       ctx.beginPath(); ctx.roundRect(barX, barY, Math.max(barH, barW * hpPct), barH, barH / 2); ctx.fill();
       ctx.save(); ctx.beginPath(); ctx.roundRect(barX, barY, Math.max(barH, barW * hpPct), barH, barH / 2); ctx.clip();
       ctx.fillStyle = 'rgba(255,255,255,0.15)';
-      ctx.beginPath(); ctx.roundRect(barX + 3, barY + 2, barW * hpPct - 6, barH / 2 - 2, barH / 4); ctx.fill();
+      const hlW = barW * hpPct - 6;
+      if (hlW > 0) { ctx.beginPath(); ctx.roundRect(barX + 3, barY + 2, hlW, barH / 2 - 2, barH / 4); ctx.fill(); }
       ctx.restore();
     }
     ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1;
