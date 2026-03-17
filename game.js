@@ -734,6 +734,7 @@ function _updateBatBallCCD(dt) {
 
     if (Math.abs(normalizeAngle(bat.visualAngle - bat.restAngle)) < 0.05) {
       bat.swingPhase   = 'idle';
+      bat.swingFrame   = 0;     // reset so next swing starts clean
       bat.hitThisSwing = false; // allow next swing
     }
   }
@@ -751,11 +752,11 @@ function _updateBatBallCCD(dt) {
   }
   // (in 'return' phase with squashTimer==0, the return block's lerp back to 1.0 applies)
 
-  // ── CCD — active during snap frames 1–10 ──
-  // Use wasInSnap (pre-transition) so large-dt frames that overshoot and
-  // immediately transition to 'return' still get a chance to hit the ball.
-  const ccdActive = wasInSnap &&
-                    (bat.swingFrame >= 1) && (bat.swingFrame <= 10);
+  // ── CCD — active while swinging (snap) or returning after a swing ──
+  // Fire during snap (wasInSnap) AND during return phase while swingFrame > 0,
+  // so the bat can still hit the ball as it drifts back toward the target angle.
+  const ccdActive = (wasInSnap || bat.swingPhase === 'return') &&
+                    (bat.swingFrame >= 1);
 
   const currSeg  = _getBatSegment(bat.visualAngle);
   const currBase = { x: currSeg.bx, y: currSeg.by };
@@ -1157,14 +1158,14 @@ function _updateEnemies(dt) {
       enemy.visualAngle = lerpAngle(enemy.visualAngle, enemy.restAngle, BAT_RETURN_LERP);
       if (Math.abs(normalizeAngle(enemy.visualAngle - enemy.restAngle)) < 0.05) {
         enemy.swingPhase   = 'idle';
+        enemy.swingFrame   = 0;
         enemy.hitThisSwing = false;
       }
     }
 
-    // ── CCD during snap frames 1–10 ──
-    // Use enemyWasInSnap so large-dt over-overshoot frames still get to hit.
-    const ccdActive = enemyWasInSnap &&
-                      enemy.swingFrame >= 1 && enemy.swingFrame <= 10;
+    // ── CCD during snap and return (while swing is active) ──
+    const ccdActive = (enemyWasInSnap || enemy.swingPhase === 'return') &&
+                      enemy.swingFrame >= 1;
     if (ccdActive && !enemy.hitThisSwing) {
       const currSeg = _getEnemyBatSegment(enemy, enemy.visualAngle);
       const hb = trainingBall.x, hy = trainingBall.y;
