@@ -652,9 +652,16 @@ function initTraining() {
   trainingBall.speed = 0; trainingBall.stopped = true;
   trainingBall.trail = []; trainingBall.squash = 1;
 
-  bat.hitThisSwing = false;
-  bat.hitCooldown  = 0.5;
-  bat._initFrames  = 30;
+  bat.swingPhase     = 'idle';
+  bat.swingFrame     = 0;
+  bat.swingVelocity  = 0;
+  bat.restAngle      = Math.PI / 2;
+  bat.visualAngle    = Math.PI / 2;
+  bat.targetAngle    = Math.PI / 2;
+  bat.hitThisSwing   = false;
+  bat.hitCooldown    = 0;
+  bat.prevVisualAngles = [];
+  bat._initFrames    = 30;
 
   momentumDisplay  = 0;
   bounceParticles  = [];
@@ -683,6 +690,9 @@ function _updateBatBallCCD(dt) {
 
   const mouseAngle = player.angle; // computed in _updatePlayer each frame
 
+  // Track snap state before any phase transition this frame
+  const wasInSnap = bat.swingPhase === 'snap';
+
   // ── Phase: idle — rubber-band follows mouse ──
   if (bat.swingPhase === 'idle') {
     bat.restAngle   = lerpAngle(bat.restAngle,   mouseAngle,    BAT_REST_LERP);
@@ -706,10 +716,13 @@ function _updateBatBallCCD(dt) {
     bat.visualAngle   += bat.swingVelocity * dt;
     bat.swingVelocity *= Math.pow(BAT_SWING_DECAY, dt * 60);
 
-    // Transition to return on overshoot or velocity decay
+    // Transition to return when bat has passed the target OR velocity decayed.
+    // Check overshoot only when bat has swung PAST the target (same sign as velocity),
+    // not when it's still approaching (which also gives large |overshoot| values).
     const overshoot = normalizeAngle(bat.visualAngle - bat.targetAngle);
-    if (Math.abs(overshoot) > BAT_OVERSHOOT_DEG * Math.PI / 180 ||
-        Math.abs(bat.swingVelocity) < 0.3) {
+    const hasPassed = Math.sign(overshoot) === Math.sign(bat.swingVelocity)
+                      && Math.abs(overshoot) > BAT_OVERSHOOT_DEG * Math.PI / 180;
+    if (hasPassed || Math.abs(bat.swingVelocity) < 0.3) {
       bat.swingPhase = 'return';
     }
 
@@ -739,7 +752,9 @@ function _updateBatBallCCD(dt) {
   // (in 'return' phase with squashTimer==0, the return block's lerp back to 1.0 applies)
 
   // ── CCD — active during snap frames 1–10 ──
-  const ccdActive = (bat.swingPhase === 'snap') &&
+  // Use wasInSnap (pre-transition) so large-dt frames that overshoot and
+  // immediately transition to 'return' still get a chance to hit the ball.
+  const ccdActive = wasInSnap &&
                     (bat.swingFrame >= 1) && (bat.swingFrame <= 10);
 
   const currSeg  = _getBatSegment(bat.visualAngle);
@@ -1090,6 +1105,9 @@ function _updateEnemies(dt) {
       idealAngle = Math.atan2(edy, edx);
     }
 
+    // Track snap state before any phase transition this frame
+    const enemyWasInSnap = enemy.swingPhase === 'snap';
+
     // ── Rubber-band bat update ──
     if (enemy.swingPhase === 'idle') {
       enemy.restAngle   = lerpAngle(enemy.restAngle,   idealAngle,        BAT_REST_LERP);
@@ -1126,8 +1144,9 @@ function _updateEnemies(dt) {
       enemy.swingVelocity  *= Math.pow(BAT_SWING_DECAY, dt * 60);
 
       const overshoot = normalizeAngle(enemy.visualAngle - enemy.targetAngle);
-      if (Math.abs(overshoot) > ENEMY_BAT_OVERSHOOT_DEG * Math.PI / 180 ||
-          Math.abs(enemy.swingVelocity) < 0.3 ||
+      const hasPassed = Math.sign(overshoot) === Math.sign(enemy.swingVelocity)
+                        && Math.abs(overshoot) > ENEMY_BAT_OVERSHOOT_DEG * Math.PI / 180;
+      if (hasPassed || Math.abs(enemy.swingVelocity) < 0.3 ||
           enemy.swingFrame > MAX_SWING_FRAMES) {      // safety timeout
         enemy.swingPhase   = 'return';
         enemy.swingCooldown = 1.2 + Math.random() * 0.6;
@@ -1143,7 +1162,8 @@ function _updateEnemies(dt) {
     }
 
     // ── CCD during snap frames 1–10 ──
-    const ccdActive = enemy.swingPhase === 'snap' &&
+    // Use enemyWasInSnap so large-dt over-overshoot frames still get to hit.
+    const ccdActive = enemyWasInSnap &&
                       enemy.swingFrame >= 1 && enemy.swingFrame <= 10;
     if (ccdActive && !enemy.hitThisSwing) {
       const currSeg = _getEnemyBatSegment(enemy, enemy.visualAngle);
