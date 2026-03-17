@@ -652,7 +652,7 @@ function initTraining() {
   trainingBall.speed = 0; trainingBall.stopped = true;
   trainingBall.trail = []; trainingBall.squash = 1;
 
-  bat.hitThisSwing = true;
+  bat.hitThisSwing = false;
   bat.hitCooldown  = 0.5;
   bat._initFrames  = 30;
 
@@ -1104,10 +1104,10 @@ function _updateEnemies(dt) {
         GATE_RIGHT.y + GATE_RIGHT.h / 2 - by,
         GATE_RIGHT.x + GATE_RIGHT.w / 2 - bx
       );
-      const headingToGoal = trainingBall.speed > 100 &&
+      const headingToGoal = trainingBall.speed > 500 &&
         Math.abs(normalizeAngle(ballDir - toEnemyGoal)) < Math.PI / 3;
       if (!headingToGoal && inRange && enemy.swingCooldown <= 0 &&
-          !enemy.hitThisSwing && angleLag < 15 * Math.PI / 180) {
+          !enemy.hitThisSwing && angleLag < 45 * Math.PI / 180) {
         const angDist   = normalizeAngle(idealAngle - enemy.visualAngle);
         const eSwingDir = angDist !== 0 ? Math.sign(angDist) : 1;
         enemy.swingVelocity = eSwingDir * Math.max(Math.abs(angDist * ENEMY_BAT_SWING_POWER), ENEMY_BAT_SWING_POWER * 0.5);
