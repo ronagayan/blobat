@@ -882,6 +882,44 @@ function _updateBatBallCCD(dt) {
   bat.prevVisualAngles.unshift(bat.visualAngle);
   if (bat.prevVisualAngles.length > 2) bat.prevVisualAngles.pop();
 
+  // ── Always-on physical contact: bat is a solid object at all times ──
+  // Fires regardless of phase/click — ball is pushed whenever it touches the bat.
+  if (bat.hitCooldown <= 0 && !player.rolling) {
+    const bx = trainingBall.x, by = trainingBall.y;
+    const hitRadius = trainingBall.radius + bat.width;
+    const ct = segmentCircleTest(currBase.x, currBase.y, currTip.x, currTip.y, bx, by, hitRadius);
+    if (ct.hit) {
+      // Angular velocity of bat this frame → tangential speed at contact point
+      const angVel   = (bat.visualAngle - bat.prevAngle) / dt;
+      const pivotDist = Math.hypot(ct.closest.x - player.x, ct.closest.y - player.y);
+      const batSpeed  = Math.abs(angVel) * pivotDist;
+
+      // Push direction: from contact point toward ball center
+      let hitDx = bx - ct.closest.x, hitDy = by - ct.closest.y;
+      const hitLen = Math.hypot(hitDx, hitDy);
+      if (hitLen > 0.01) { hitDx /= hitLen; hitDy /= hitLen; }
+      else { hitDx = Math.cos(bat.visualAngle); hitDy = Math.sin(bat.visualAngle); }
+
+      // Apply velocity only if bat is actively moving; otherwise just resolve overlap
+      const effectiveSpeed = batSpeed * BAT_POWER_MULT;
+      if (effectiveSpeed > 20) {
+        trainingBall.vx = hitDx * effectiveSpeed;
+        trainingBall.vy = hitDy * effectiveSpeed;
+        trainingBall.stopped = false;
+        trainingBall.speed = Math.hypot(trainingBall.vx, trainingBall.vy);
+      }
+      // Always push ball out of bat to resolve overlap
+      trainingBall.x = ct.closest.x + hitDx * (hitRadius + 2);
+      trainingBall.y = ct.closest.y + hitDy * (hitRadius + 2);
+      bat.hitCooldown = 0.05;
+
+      if (effectiveSpeed > 80) {
+        trainingBall.squash = 0.8; trainingBall.squashTimer = 0.1;
+        trainingBall.squashAngle = Math.atan2(hitDy, hitDx);
+      }
+    }
+  }
+
   // Store for next frame's CCD
   bat.prevBase  = { x: currBase.x, y: currBase.y };
   bat.prevTip   = { x: currTip.x,  y: currTip.y  };
